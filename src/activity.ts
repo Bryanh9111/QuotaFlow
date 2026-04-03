@@ -45,9 +45,12 @@ export class ActivityDetector {
 
   async isUserActive(): Promise<boolean> {
     const processes = await this.getClaudeProcesses();
-    const external = processes.filter((p) => !this.ownPids.has(p.pid));
+    const external = processes.filter(
+      (p) => !this.ownPids.has(p.pid) && !p.command.includes("quotaflow")
+    );
 
     if (external.length > 0) {
+      this.lastActiveTime = new Date();
       return true;
     }
 

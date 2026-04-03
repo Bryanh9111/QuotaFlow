@@ -60,7 +60,13 @@ export class Scheduler {
     try {
       await this.doTick();
     } finally {
-      await this.checkDigests();
+      try {
+        await this.checkDigests();
+      } catch (err) {
+        this.deps.logger.error("checkDigests failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       this.busy = false;
     }
   }

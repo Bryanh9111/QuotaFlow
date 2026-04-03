@@ -130,26 +130,14 @@ export function runStatus(
   quota: QuotaMonitor
 ): string {
   const available = quota.getAvailableTokens();
-  // The usable ceiling mirrors quota.ts: floor(tokens_per_window * (1 - buffer/100))
-  // We surface raw window capacity from getWeeklyUsage context; derive max from available+used
-  const windowStart = Date.now(); // approximate - display only
+  const capacity = quota.getWindowCapacity();
   const weekly = quota.getWeeklyUsage();
   const queued = queue.getQueued().length;
 
-  // Re-derive total capacity by asking for available when nothing is used.
-  // We can't access private config, so display available/total as available + weekly window used.
-  // Use a simple heuristic: show available / (available + weekly_tokens) if within window.
-  const windowTokensUsed = weekly.total_tokens;
-  const displayTotal = available + windowTokensUsed;
-
-  const availableFormatted = available.toLocaleString();
-  const totalFormatted = displayTotal.toLocaleString();
-  const weeklyFormatted = weekly.total_tokens.toLocaleString();
-
   return [
     "QuotaFlow Status",
-    `  Available tokens: ${availableFormatted} / ${totalFormatted}`,
-    `  Weekly usage: ${weeklyFormatted} tokens (${weekly.task_count} tasks)`,
+    `  Window tokens: ${available.toLocaleString()} / ${capacity.toLocaleString()} available`,
+    `  Weekly usage: ${weekly.total_tokens.toLocaleString()} tokens (${weekly.task_count} tasks)`,
     `  Queued tasks: ${queued}`,
   ].join("\n");
 }

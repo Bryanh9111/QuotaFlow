@@ -87,7 +87,7 @@ export class TaskExecutor {
 
     // Create feature branch
     try {
-      await execAsync(`git checkout -b ${branchName}`, { cwd: projectPath });
+      await execAsync(`git checkout -B ${branchName}`, { cwd: projectPath });
     } catch (err) {
       return {
         task_id: task.id,

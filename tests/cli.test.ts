@@ -25,6 +25,7 @@ function makeQueue(): TaskQueueManager {
 function makeQuotaMock(overrides?: Partial<QuotaMonitor>): QuotaMonitor {
   return {
     getAvailableTokens: vi.fn().mockReturnValue(79200),
+    getWindowCapacity: vi.fn().mockReturnValue(79200),
     getWeeklyUsage: vi.fn().mockReturnValue({
       total_tokens: 45000,
       total_duration_ms: 600000,
@@ -215,7 +216,7 @@ describe("runStatus", () => {
 
     const output = runStatus(queue, quota);
     expect(output).toMatch(/QuotaFlow Status/);
-    expect(output).toMatch(/Available tokens/);
+    expect(output).toMatch(/Window tokens/);
     expect(output).toMatch(/79,200/);
     expect(output).toMatch(/Weekly usage/);
     expect(output).toMatch(/45,000/);

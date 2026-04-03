@@ -133,6 +133,13 @@ export class QuotaMonitor {
     return Math.max(0, usable - used);
   }
 
+  getWindowCapacity(): number {
+    return Math.floor(
+      this.config.tokens_per_5h_window *
+        (1 - this.config.safety_buffer_percent / 100)
+    );
+  }
+
   hasQuotaFor(size: TaskSize): boolean {
     return this.getAvailableTokens() >= SIZE_TOKEN_ESTIMATES[size];
   }
