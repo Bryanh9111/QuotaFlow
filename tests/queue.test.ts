@@ -202,4 +202,24 @@ describe("TaskQueueManager", () => {
 
     expect(mgr.pickNext(100000)).toBeNull();
   });
+
+  it("pickNextExcluding skips tasks for excluded projects", () => {
+    const mgr = makeManager();
+    mgr.addTask({ description: "Relay task", project: "Relay", priority: "high", size: "small" });
+    mgr.addTask({ description: "Athena task", project: "Athena", priority: "medium", size: "small" });
+
+    // Excluding Relay should skip the high-priority Relay task and return the Athena task
+    const next = mgr.pickNextExcluding(100000, ["Relay"]);
+    expect(next).not.toBeNull();
+    expect(next!.project).toBe("Athena");
+
+    // Excluding both should return null
+    const none = mgr.pickNextExcluding(100000, ["Relay", "Athena"]);
+    expect(none).toBeNull();
+
+    // Excluding nothing should return the highest-priority task (Relay/high)
+    const unrestricted = mgr.pickNextExcluding(100000, []);
+    expect(unrestricted).not.toBeNull();
+    expect(unrestricted!.project).toBe("Relay");
+  });
 });

@@ -155,7 +155,7 @@ describe("Scheduler", () => {
   it("marks rate limited when failure error contains 'rate limit'", async () => {
     const task = makeTask();
     const result = makeResult({ success: false, error: "rate limit exceeded" });
-    deps.queue.pickNext.mockReturnValue(task);
+    deps.queue.pickNextExcluding.mockReturnValue(task);
     deps.executor.execute.mockResolvedValue(result);
 
     await scheduler.tick();
@@ -165,7 +165,7 @@ describe("Scheduler", () => {
 
   it("marks rate limited when executor throws with 'rate limit' in message", async () => {
     const task = makeTask();
-    deps.queue.pickNext.mockReturnValue(task);
+    deps.queue.pickNextExcluding.mockReturnValue(task);
     deps.executor.execute.mockRejectedValue(new Error("API rate limit hit"));
 
     await scheduler.tick();
@@ -203,7 +203,7 @@ describe("Scheduler", () => {
       task_count: 100,
     });
     await scheduler.tick();
-    expect(deps.queue.pickNext).not.toHaveBeenCalled();
+    expect(deps.queue.pickNextExcluding).not.toHaveBeenCalled();
     expect(deps.executor.execute).not.toHaveBeenCalled();
   });
 
@@ -224,6 +224,86 @@ describe("Scheduler", () => {
       expect.stringContaining("[DRY RUN]"),
       expect.objectContaining({ id: "task-1" })
     );
+  });
+
+  describe("concurrency", () => {
+    it("dispatches multiple tasks when max_concurrency > 1", async () => {
+      deps.config.max_concurrency = 2;
+      deps.quota.getAvailableTokens.mockReturnValue(40000);
+
+      const task1 = makeTask({ id: "task-1", project: "Alpha" });
+      const task2 = makeTask({ id: "task-2", project: "Beta" });
+
+      deps.queue.pickNextExcluding
+        .mockReturnValueOnce(task1)
+        .mockReturnValueOnce(task2)
+        .mockReturnValue(null);
+
+      const result1 = makeResult({ task_id: "task-1" });
+      const result2 = makeResult({ task_id: "task-2" });
+      deps.executor.execute
+        .mockResolvedValueOnce(result1)
+        .mockResolvedValueOnce(result2);
+
+      await scheduler.tick();
+
+      expect(deps.executor.execute).toHaveBeenCalledTimes(2);
+      expect(deps.queue.updateTask).toHaveBeenCalledWith("task-1", { status: "running" });
+      expect(deps.queue.updateTask).toHaveBeenCalledWith("task-2", { status: "running" });
+      expect(deps.queue.completeTask).toHaveBeenCalledTimes(2);
+    });
+
+    it("never dispatches two tasks to the same project", async () => {
+      deps.config.max_concurrency = 3;
+      deps.quota.getAvailableTokens.mockReturnValue(60000);
+
+      const task1 = makeTask({ id: "task-1", project: "SameProject" });
+      const task2 = makeTask({ id: "task-2", project: "OtherProject" });
+
+      // First call returns task1, second call (which must exclude SameProject) returns task2
+      deps.queue.pickNextExcluding.mockImplementation((_tokens, excludeProjects) => {
+        if (excludeProjects.includes("SameProject")) return task2;
+        return task1;
+      });
+
+      // Third call should return null (task2's project is also excluded by then)
+      deps.queue.pickNextExcluding.mockImplementationOnce((_tokens, _excludeProjects) => task1);
+      deps.queue.pickNextExcluding.mockImplementationOnce((_tokens, excludeProjects) => {
+        if (excludeProjects.includes("SameProject")) return task2;
+        return task1;
+      });
+      deps.queue.pickNextExcluding.mockImplementationOnce(() => null);
+
+      deps.executor.execute.mockResolvedValue(makeResult());
+
+      await scheduler.tick();
+
+      // Verify the second pickNextExcluding call excluded SameProject
+      const calls = deps.queue.pickNextExcluding.mock.calls;
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+      // Second call must exclude the first task's project
+      expect(calls[1][1]).toContain("SameProject");
+    });
+
+    it("scales down concurrency when quota is low", async () => {
+      deps.config.max_concurrency = 3;
+      // Only enough tokens for one small task (10000), returns 0 after first pick
+      let callCount = 0;
+      deps.quota.getAvailableTokens.mockImplementation(() => {
+        // First call (pre-loop check) returns 10000, subsequent slot checks return 0
+        callCount++;
+        return callCount <= 2 ? 10000 : 0;
+      });
+
+      const task1 = makeTask({ id: "task-1", project: "Alpha" });
+      deps.queue.pickNextExcluding.mockReturnValueOnce(task1).mockReturnValue(null);
+      deps.executor.execute.mockResolvedValue(makeResult({ task_id: "task-1" }));
+
+      await scheduler.tick();
+
+      // Only one task should have been dispatched
+      expect(deps.executor.execute).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("digest scheduling", () => {
