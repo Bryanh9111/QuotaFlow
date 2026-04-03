@@ -58,6 +58,7 @@ export class Scheduler {
     try {
       await this.doTick();
     } finally {
+      await this.checkDigests();
       this.busy = false;
     }
   }
@@ -160,8 +161,6 @@ export class Scheduler {
     }
 
     await notifier.taskCompleted(task, result);
-
-    await this.checkDigests();
   }
 
   private async checkDigests(): Promise<void> {
