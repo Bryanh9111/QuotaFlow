@@ -1,0 +1,19 @@
+{
+  "projects_root": "/Users/zion/Repos/Zylo",
+  "inactivity_threshold_minutes": 15,
+  "check_interval_minutes": 5,
+  "max_concurrency": 1,
+  "discord_webhook_url": "",
+  "quota": {
+    "tokens_per_5h_window": 88000,
+    "weekly_compute_hours": 200,
+    "safety_buffer_percent": 10
+  },
+  "timeouts": {
+    "small_minutes": 5,
+    "medium_minutes": 15,
+    "large_minutes": 45
+  },
+  "daily_report_hour": 8,
+  "weekly_report_day": 1
+}
