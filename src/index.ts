@@ -9,6 +9,7 @@ import { TaskExecutor } from "./executor.js";
 import { Notifier } from "./notify.js";
 import { Logger } from "./logger.js";
 import { Scheduler } from "./scheduler.js";
+import { runCli } from "./cli.js";
 
 const QUOTAFLOW_DIR = join(homedir(), ".quotaflow");
 const CONFIG_PATH = join(QUOTAFLOW_DIR, "config.json");
@@ -18,6 +19,7 @@ const LOGS_DIR = join(QUOTAFLOW_DIR, "logs");
 
 function main(): void {
   const dryRun = process.argv.includes("--dry-run");
+  const userArgs = process.argv.slice(2).filter((a) => a !== "--dry-run");
 
   mkdirSync(QUOTAFLOW_DIR, { recursive: true });
   mkdirSync(LOGS_DIR, { recursive: true });
@@ -25,9 +27,18 @@ function main(): void {
   const config = loadConfig(CONFIG_PATH);
   validateConfig(config);
 
-  const logger = new Logger(LOGS_DIR);
   const queue = new TaskQueueManager(TASKS_PATH, config.projects_root);
   const quota = new QuotaMonitor(DB_PATH, config.quota);
+
+  // If a subcommand is present, handle CLI and exit
+  const cliResult = runCli(userArgs, queue, quota);
+  if (cliResult !== null) {
+    console.log(cliResult);
+    quota.close();
+    process.exit(0);
+  }
+
+  const logger = new Logger(LOGS_DIR);
   const activity = new ActivityDetector(config.inactivity_threshold_minutes);
   const executor = new TaskExecutor(config.timeouts);
   const notifier = new Notifier(config.discord_webhook_url);

@@ -49,6 +49,7 @@ function mockDeps() {
       completeTask: vi.fn<[string, { branch: string; tokens_used: number; duration_ms: number }], void>(),
       failTask: vi.fn<[string, string], void>(),
       recoverRunningTasks: vi.fn<[], number>().mockReturnValue(0),
+      getAll: vi.fn().mockReturnValue([]),
     },
     executor: {
       execute: vi.fn<[Task, string], Promise<ExecutionResult>>().mockResolvedValue(makeResult()),
@@ -56,6 +57,7 @@ function mockDeps() {
     notifier: {
       taskCompleted: vi.fn<[Task, ExecutionResult], Promise<void>>().mockResolvedValue(undefined),
       sendMessage: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),
+      sendDailyDigest: vi.fn().mockResolvedValue(undefined),
     },
     logger: {
       info: vi.fn(),
@@ -221,6 +223,46 @@ describe("Scheduler", () => {
       expect.stringContaining("[DRY RUN]"),
       expect.objectContaining({ id: "task-1" })
     );
+  });
+
+  describe("digest scheduling", () => {
+    it("sends daily digest when hour matches and not yet sent today", async () => {
+      vi.useFakeTimers();
+      // Set time to daily_report_hour (DEFAULT_CONFIG.daily_report_hour = 8), so hour >= 8
+      vi.setSystemTime(new Date("2026-04-03T13:00:00.000Z"));
+      // Adjust config to match local hour: override to use UTC hour directly
+      deps.config.daily_report_hour = 8;
+
+      try {
+        await scheduler.tick();
+        expect(deps.notifier.sendDailyDigest).toHaveBeenCalledTimes(1);
+        expect(deps.notifier.sendDailyDigest).toHaveBeenCalledWith(
+          [],
+          expect.any(Number),
+          expect.any(Number)
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not send duplicate daily digest on same day", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-04-03T13:00:00.000Z"));
+      deps.config.daily_report_hour = 8;
+
+      try {
+        // First tick - should send digest
+        await scheduler.tick();
+        expect(deps.notifier.sendDailyDigest).toHaveBeenCalledTimes(1);
+
+        // Second tick same day - should NOT send again
+        await scheduler.tick();
+        expect(deps.notifier.sendDailyDigest).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe("start / stop", () => {

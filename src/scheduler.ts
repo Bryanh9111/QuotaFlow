@@ -20,6 +20,7 @@ interface SchedulerDeps {
     completeTask(id: string, meta: { branch: string; tokens_used: number; duration_ms: number }): void;
     failTask(id: string, error: string): void;
     recoverRunningTasks(): number;
+    getAll(): Task[];
   };
   executor: {
     execute(task: Task, projectPath: string): Promise<ExecutionResult>;
@@ -27,6 +28,7 @@ interface SchedulerDeps {
   notifier: {
     taskCompleted(task: Task, result: ExecutionResult): Promise<void>;
     sendMessage(content: string): Promise<void>;
+    sendDailyDigest(tasks: Task[], quotaUsed: number, quotaTotal: number): Promise<void>;
   };
   logger: {
     info(msg: string, data?: Record<string, unknown>): void;
@@ -40,6 +42,8 @@ export class Scheduler {
   private busy = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private dryRun: boolean;
+  private lastDailyDigest: string | null = null;
+  private lastWeeklyDigest: string | null = null;
 
   constructor(private deps: SchedulerDeps, options?: { dryRun?: boolean }) {
     this.dryRun = options?.dryRun ?? false;
@@ -156,6 +160,34 @@ export class Scheduler {
     }
 
     await notifier.taskCompleted(task, result);
+
+    await this.checkDigests();
+  }
+
+  private async checkDigests(): Promise<void> {
+    const { config, quota, queue, notifier } = this.deps;
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const currentHour = now.getHours();
+    const currentDay = now.getDay();
+
+    if (currentHour >= config.daily_report_hour && this.lastDailyDigest !== todayStr) {
+      const weeklyUsage = quota.getWeeklyUsage();
+      const quotaTotal = config.quota.tokens_per_5h_window * (24 / 5) * 7;
+      await notifier.sendDailyDigest(queue.getAll(), weeklyUsage.total_tokens, quotaTotal);
+      this.lastDailyDigest = todayStr;
+    }
+
+    if (
+      currentDay === config.weekly_report_day &&
+      currentHour >= config.daily_report_hour &&
+      this.lastWeeklyDigest !== todayStr
+    ) {
+      const weeklyUsage = quota.getWeeklyUsage();
+      const quotaTotal = config.quota.tokens_per_5h_window * (24 / 5) * 7;
+      await notifier.sendDailyDigest(queue.getAll(), weeklyUsage.total_tokens, quotaTotal);
+      this.lastWeeklyDigest = todayStr;
+    }
   }
 
   start(): void {
