@@ -17,6 +17,8 @@ const DB_PATH = join(QUOTAFLOW_DIR, "data.db");
 const LOGS_DIR = join(QUOTAFLOW_DIR, "logs");
 
 function main(): void {
+  const dryRun = process.argv.includes("--dry-run");
+
   mkdirSync(QUOTAFLOW_DIR, { recursive: true });
   mkdirSync(LOGS_DIR, { recursive: true });
 
@@ -38,7 +40,7 @@ function main(): void {
     executor,
     notifier,
     logger,
-  });
+  }, { dryRun });
 
   const shutdown = (): void => {
     logger.info("Shutting down...");
@@ -54,7 +56,12 @@ function main(): void {
     projects_root: config.projects_root,
     interval: config.check_interval_minutes,
     webhook: config.discord_webhook_url ? "configured" : "not configured",
+    dry_run: dryRun,
   });
+
+  if (dryRun) {
+    logger.info("DRY RUN MODE - no tasks will be executed");
+  }
 
   scheduler.start();
 }

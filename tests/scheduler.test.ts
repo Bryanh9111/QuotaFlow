@@ -193,6 +193,36 @@ describe("Scheduler", () => {
     expect(deps.activity.isUserActive).toHaveBeenCalledTimes(1);
   });
 
+  it("P1: skips when weekly quota reached", async () => {
+    deps.quota.getWeeklyUsage.mockReturnValue({
+      total_tokens: 999999999,
+      total_duration_ms: 0,
+      task_count: 100,
+    });
+    await scheduler.tick();
+    expect(deps.queue.pickNext).not.toHaveBeenCalled();
+    expect(deps.executor.execute).not.toHaveBeenCalled();
+  });
+
+  it("P1: skips large task when insufficient quota", async () => {
+    const largeTask = makeTask({ size: "large" });
+    deps.quota.getAvailableTokens.mockReturnValue(50000); // less than 60000 needed
+    deps.queue.pickNext.mockReturnValue(largeTask);
+    await scheduler.tick();
+    expect(deps.executor.execute).not.toHaveBeenCalled();
+  });
+
+  it("P1: dry-run mode logs but does not execute", async () => {
+    const dryScheduler = new Scheduler(deps, { dryRun: true });
+    await dryScheduler.tick();
+    expect(deps.executor.execute).not.toHaveBeenCalled();
+    expect(deps.queue.updateTask).not.toHaveBeenCalled();
+    expect(deps.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("[DRY RUN]"),
+      expect.objectContaining({ id: "task-1" })
+    );
+  });
+
   describe("start / stop", () => {
     it("calls recoverRunningTasks on start", () => {
       deps.queue.recoverRunningTasks.mockReturnValue(2);

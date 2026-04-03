@@ -39,8 +39,11 @@ interface SchedulerDeps {
 export class Scheduler {
   private busy = false;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private dryRun: boolean;
 
-  constructor(private deps: SchedulerDeps) {}
+  constructor(private deps: SchedulerDeps, options?: { dryRun?: boolean }) {
+    this.dryRun = options?.dryRun ?? false;
+  }
 
   async tick(): Promise<void> {
     if (this.busy) {
@@ -75,9 +78,35 @@ export class Scheduler {
       return;
     }
 
+    // P1: check weekly quota
+    const weekly = quota.getWeeklyUsage();
+    const weeklyLimitTokens = config.quota.weekly_compute_hours * 3600 * 10; // rough estimate: 10 tokens/sec compute
+    if (weekly.total_tokens >= weeklyLimitTokens) {
+      logger.debug("tick skipped: weekly quota reached", { used: weekly.total_tokens, limit: weeklyLimitTokens });
+      return;
+    }
+
     const task = queue.pickNext(available);
     if (!task) {
       logger.debug("tick skipped: no tasks");
+      return;
+    }
+
+    // P1: probe before large tasks - try a small quota check first
+    if (task.size === "large" && available < 60000) {
+      logger.debug("tick skipped: insufficient quota for large task, waiting", { available, needed: 60000 });
+      return;
+    }
+
+    // P1: dry-run mode - log what would happen without executing
+    if (this.dryRun) {
+      logger.info("[DRY RUN] would execute task", {
+        id: task.id,
+        project: task.project,
+        description: task.description,
+        size: task.size,
+        available_tokens: available,
+      });
       return;
     }
 
