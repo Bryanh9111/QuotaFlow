@@ -131,4 +131,39 @@ describe("QuotaMonitor", () => {
     expect(weekly.total_duration_ms).toBe(0);
     expect(weekly.task_count).toBe(0);
   });
+
+  describe("estimateTokens", () => {
+    it("returns SIZE_TOKEN_ESTIMATES default when no history", () => {
+      expect(monitor.estimateTokens("small")).toBe(10000);
+      expect(monitor.estimateTokens("medium")).toBe(30000);
+      expect(monitor.estimateTokens("large")).toBe(60000);
+    });
+
+    it("returns SIZE_TOKEN_ESTIMATES default when fewer than 3 samples", () => {
+      monitor.recordUsage("t1", 8000, 1000, "small");
+      monitor.recordUsage("t2", 12000, 1000, "small");
+      // Only 2 samples - should still fall back to default
+      expect(monitor.estimateTokens("small")).toBe(10000);
+    });
+
+    it("returns average when 3 or more samples exist", () => {
+      monitor.recordUsage("t1", 8000, 1000, "small");
+      monitor.recordUsage("t2", 12000, 1000, "small");
+      monitor.recordUsage("t3", 10000, 1000, "small");
+      monitor.recordUsage("t4", 14000, 1000, "small");
+      monitor.recordUsage("t5", 6000, 1000, "small");
+      // avg = (8000+12000+10000+14000+6000) / 5 = 50000 / 5 = 10000
+      expect(monitor.estimateTokens("small")).toBe(10000);
+    });
+
+    it("only averages matching size, not other sizes", () => {
+      // Record 3 medium tasks with distinct average
+      monitor.recordUsage("m1", 20000, 1000, "medium");
+      monitor.recordUsage("m2", 25000, 1000, "medium");
+      monitor.recordUsage("m3", 30000, 1000, "medium");
+      // avg medium = 25000; small has no history so uses default
+      expect(monitor.estimateTokens("medium")).toBe(25000);
+      expect(monitor.estimateTokens("small")).toBe(10000);
+    });
+  });
 });

@@ -115,6 +115,18 @@ export class TaskQueueManager {
     return null;
   }
 
+  pickNextExcluding(availableTokens: number, excludeProjects: string[]): Task | null {
+    const excludeSet = new Set(excludeProjects);
+    const queued = this.getQueued();
+    for (const task of queued) {
+      if (excludeSet.has(task.project)) continue;
+      if (SIZE_TOKEN_ESTIMATES[task.size] <= availableTokens) {
+        return task;
+      }
+    }
+    return null;
+  }
+
   recoverRunningTasks(): number {
     const queue = this.read();
     let count = 0;

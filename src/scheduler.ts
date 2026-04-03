@@ -16,6 +16,7 @@ interface SchedulerDeps {
   };
   queue: {
     pickNext(availableTokens: number): Task | null;
+    pickNextExcluding(availableTokens: number, excludeProjects: string[]): Task | null;
     updateTask(id: string, updates: Partial<Task>): void;
     completeTask(id: string, meta: { branch: string; tokens_used: number; duration_ms: number }): void;
     failTask(id: string, error: string): void;
@@ -44,6 +45,7 @@ export class Scheduler {
   private dryRun: boolean;
   private lastDailyDigest: string | null = null;
   private lastWeeklyDigest: string | null = null;
+  private activeProjects: Set<string> = new Set();
 
   constructor(private deps: SchedulerDeps, options?: { dryRun?: boolean }) {
     this.dryRun = options?.dryRun ?? false;
@@ -91,76 +93,113 @@ export class Scheduler {
       return;
     }
 
-    const task = queue.pickNext(available);
-    if (!task) {
-      logger.debug("tick skipped: no tasks");
-      return;
-    }
+    const maxConcurrency = config.max_concurrency ?? 1;
 
-    // P1: probe before large tasks - try a small quota check first
-    if (task.size === "large" && available < 60000) {
-      logger.debug("tick skipped: insufficient quota for large task, waiting", { available, needed: 60000 });
-      return;
-    }
+    // Collect tasks to dispatch this tick
+    type Dispatch = { task: Task; promise: Promise<ExecutionResult | { __threw: true; msg: string }> };
+    const dispatches: Dispatch[] = [];
+    const tickProjects = new Set<string>(this.activeProjects);
 
-    // P1: dry-run mode - log what would happen without executing
-    if (this.dryRun) {
-      logger.info("[DRY RUN] would execute task", {
-        id: task.id,
-        project: task.project,
-        description: task.description,
-        size: task.size,
-        available_tokens: available,
-      });
-      return;
-    }
+    for (let slot = 0; slot < maxConcurrency; slot++) {
+      const slotAvailable = quota.getAvailableTokens();
+      if (slotAvailable <= 0) break;
 
-    queue.updateTask(task.id, { status: "running" });
-    logger.info("executing task", { id: task.id, project: task.project });
+      const task = queue.pickNextExcluding(slotAvailable, Array.from(tickProjects));
+      if (!task) break;
 
-    const projectPath = join(config.projects_root, task.project);
-    let result: ExecutionResult;
-
-    try {
-      result = await executor.execute(task, projectPath);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error("executor threw", { id: task.id, error: msg });
-      queue.failTask(task.id, msg);
-      if (msg.toLowerCase().includes("rate limit")) {
-        quota.markRateLimited();
+      // P1: probe before large tasks
+      if (task.size === "large" && slotAvailable < 60000) {
+        logger.debug("slot skipped: insufficient quota for large task", { available: slotAvailable, needed: 60000 });
+        break;
       }
-      await notifier.taskCompleted(task, {
-        task_id: task.id,
-        success: false,
-        branch: "",
-        tokens_used: 0,
-        duration_ms: 0,
-        stdout: "",
-        stderr: "",
-        error: msg,
+
+      // P1: dry-run mode
+      if (this.dryRun) {
+        logger.info("[DRY RUN] would execute task", {
+          id: task.id,
+          project: task.project,
+          description: task.description,
+          size: task.size,
+          available_tokens: slotAvailable,
+        });
+        tickProjects.add(task.project);
+        continue;
+      }
+
+      tickProjects.add(task.project);
+      this.activeProjects.add(task.project);
+      queue.updateTask(task.id, { status: "running" });
+      logger.info("executing task", { id: task.id, project: task.project });
+
+      const projectPath = join(config.projects_root, task.project);
+      const promise = executor.execute(task, projectPath).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { __threw: true as const, msg };
       });
+
+      dispatches.push({ task, promise });
+    }
+
+    if (dispatches.length === 0) {
+      if (!this.dryRun) logger.debug("tick skipped: no tasks");
       return;
     }
 
-    if (result.success) {
-      queue.completeTask(task.id, {
-        branch: result.branch,
-        tokens_used: result.tokens_used,
-        duration_ms: result.duration_ms,
-      });
-      quota.recordUsage(task.id, result.tokens_used, result.duration_ms);
-      logger.info("task completed", { id: task.id, tokens: result.tokens_used });
-    } else {
-      const errMsg = result.error ?? result.stderr ?? "unknown error";
-      queue.failTask(task.id, errMsg);
-      if (errMsg.toLowerCase().includes("rate limit")) {
-        quota.markRateLimited();
-      }
-      logger.warn("task failed", { id: task.id, error: errMsg });
-    }
+    // Await all concurrently
+    const settled = await Promise.allSettled(dispatches.map((d) => d.promise));
 
-    await notifier.taskCompleted(task, result);
+    for (let i = 0; i < dispatches.length; i++) {
+      const { task } = dispatches[i];
+      this.activeProjects.delete(task.project);
+
+      const outcome = settled[i];
+      // Promise.allSettled won't reject since we wrapped with .catch, but handle both
+      if (outcome.status === "rejected") {
+        const msg = String(outcome.reason);
+        logger.error("executor threw", { id: task.id, error: msg });
+        queue.failTask(task.id, msg);
+        if (msg.toLowerCase().includes("rate limit")) quota.markRateLimited();
+        await notifier.taskCompleted(task, {
+          task_id: task.id, success: false, branch: "", tokens_used: 0,
+          duration_ms: 0, stdout: "", stderr: "", error: msg,
+        });
+        continue;
+      }
+
+      const value = outcome.value;
+
+      // Executor threw
+      if (typeof value === "object" && value !== null && "__threw" in value) {
+        const { msg } = value as { __threw: true; msg: string };
+        logger.error("executor threw", { id: task.id, error: msg });
+        queue.failTask(task.id, msg);
+        if (msg.toLowerCase().includes("rate limit")) quota.markRateLimited();
+        await notifier.taskCompleted(task, {
+          task_id: task.id, success: false, branch: "", tokens_used: 0,
+          duration_ms: 0, stdout: "", stderr: "", error: msg,
+        });
+        continue;
+      }
+
+      const result = value as ExecutionResult;
+
+      if (result.success) {
+        queue.completeTask(task.id, {
+          branch: result.branch,
+          tokens_used: result.tokens_used,
+          duration_ms: result.duration_ms,
+        });
+        quota.recordUsage(task.id, result.tokens_used, result.duration_ms);
+        logger.info("task completed", { id: task.id, tokens: result.tokens_used });
+      } else {
+        const errMsg = result.error ?? result.stderr ?? "unknown error";
+        queue.failTask(task.id, errMsg);
+        if (errMsg.toLowerCase().includes("rate limit")) quota.markRateLimited();
+        logger.warn("task failed", { id: task.id, error: errMsg });
+      }
+
+      await notifier.taskCompleted(task, result);
+    }
   }
 
   private async checkDigests(): Promise<void> {

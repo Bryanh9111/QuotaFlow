@@ -45,6 +45,7 @@ function mockDeps() {
     },
     queue: {
       pickNext: vi.fn<[number], Task | null>().mockReturnValue(makeTask()),
+      pickNextExcluding: vi.fn<[number, string[]], Task | null>().mockReturnValue(makeTask()),
       updateTask: vi.fn<[string, Partial<Task>], void>(),
       completeTask: vi.fn<[string, { branch: string; tokens_used: number; duration_ms: number }], void>(),
       failTask: vi.fn<[string, string], void>(),
@@ -94,12 +95,12 @@ describe("Scheduler", () => {
   it("skips when no quota", async () => {
     deps.quota.getAvailableTokens.mockReturnValue(0);
     await scheduler.tick();
-    expect(deps.queue.pickNext).not.toHaveBeenCalled();
+    expect(deps.queue.pickNextExcluding).not.toHaveBeenCalled();
     expect(deps.executor.execute).not.toHaveBeenCalled();
   });
 
   it("skips when no tasks", async () => {
-    deps.queue.pickNext.mockReturnValue(null);
+    deps.queue.pickNextExcluding.mockReturnValue(null);
     await scheduler.tick();
     expect(deps.executor.execute).not.toHaveBeenCalled();
   });
@@ -107,7 +108,7 @@ describe("Scheduler", () => {
   it("executes task and chains the full success path", async () => {
     const task = makeTask();
     const result = makeResult();
-    deps.queue.pickNext.mockReturnValue(task);
+    deps.queue.pickNextExcluding.mockReturnValue(task);
     deps.executor.execute.mockResolvedValue(result);
 
     await scheduler.tick();
@@ -140,7 +141,7 @@ describe("Scheduler", () => {
   it("handles task failure: calls failTask and notifier", async () => {
     const task = makeTask();
     const result = makeResult({ success: false, error: "something broke", stderr: "oops" });
-    deps.queue.pickNext.mockReturnValue(task);
+    deps.queue.pickNextExcluding.mockReturnValue(task);
     deps.executor.execute.mockResolvedValue(result);
 
     await scheduler.tick();
@@ -209,7 +210,7 @@ describe("Scheduler", () => {
   it("P1: skips large task when insufficient quota", async () => {
     const largeTask = makeTask({ size: "large" });
     deps.quota.getAvailableTokens.mockReturnValue(50000); // less than 60000 needed
-    deps.queue.pickNext.mockReturnValue(largeTask);
+    deps.queue.pickNextExcluding.mockReturnValue(largeTask);
     await scheduler.tick();
     expect(deps.executor.execute).not.toHaveBeenCalled();
   });

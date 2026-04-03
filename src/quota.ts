@@ -37,6 +37,13 @@ export class QuotaMonitor {
       );
     `);
 
+    // Migration: add task_size column if not present
+    try {
+      this.db.exec("ALTER TABLE usage_log ADD COLUMN task_size TEXT");
+    } catch {
+      // Column already exists - ignore
+    }
+
     // Initialize window_start if not present
     const exists = this.db
       .prepare("SELECT value FROM window_state WHERE key = 'window_start'")
@@ -95,12 +102,25 @@ export class QuotaMonitor {
     return row.total;
   }
 
-  recordUsage(taskId: string, tokensUsed: number, durationMs: number): void {
+  recordUsage(taskId: string, tokensUsed: number, durationMs: number, size?: TaskSize): void {
     this.db
       .prepare(
-        "INSERT INTO usage_log (task_id, tokens_used, duration_ms, recorded_at) VALUES (?, ?, ?, ?)"
+        "INSERT INTO usage_log (task_id, tokens_used, duration_ms, recorded_at, task_size) VALUES (?, ?, ?, ?, ?)"
       )
-      .run(taskId, tokensUsed, durationMs, Date.now());
+      .run(taskId, tokensUsed, durationMs, Date.now(), size ?? null);
+  }
+
+  estimateTokens(size: TaskSize): number {
+    const row = this.db
+      .prepare(
+        "SELECT AVG(tokens_used) AS avg_tokens, COUNT(*) AS cnt FROM usage_log WHERE task_size = ? AND tokens_used > 0"
+      )
+      .get(size) as { avg_tokens: number | null; cnt: number };
+
+    if (row.cnt >= 3 && row.avg_tokens !== null) {
+      return Math.round(row.avg_tokens);
+    }
+    return SIZE_TOKEN_ESTIMATES[size];
   }
 
   getAvailableTokens(): number {

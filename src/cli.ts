@@ -1,6 +1,7 @@
 import type { TaskQueueManager } from "./queue.js";
 import type { QuotaMonitor } from "./quota.js";
 import type { TaskPriority, TaskSize } from "./types.js";
+import { applyTemplate, listTemplates } from "./templates.js";
 
 // ANSI color helpers
 const GREEN = "\x1b[32m";
@@ -17,7 +18,7 @@ export interface ParsedArgs {
 
 export function parseArgs(argv: string[]): ParsedArgs {
   // argv is process.argv.slice(2) or equivalent caller-trimmed array
-  const SUBCOMMANDS = new Set(["add", "list", "rm", "status"]);
+  const SUBCOMMANDS = new Set(["add", "list", "rm", "status", "template", "templates"]);
 
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
@@ -153,6 +154,35 @@ export function runStatus(
   ].join("\n");
 }
 
+export function runTemplate(
+  queue: TaskQueueManager,
+  args: string[],
+  flags: Record<string, string | boolean>
+): string {
+  const templateName = args[0];
+  if (!templateName) {
+    throw new Error("Missing required argument: template name");
+  }
+
+  const project = flags["project"];
+  if (!project || typeof project !== "string") {
+    throw new Error("Missing required flag: --project");
+  }
+
+  const result = applyTemplate(templateName, project);
+  if (!result) {
+    throw new Error(`Unknown template: ${templateName}`);
+  }
+
+  const task = queue.addTask({
+    description: result.description,
+    project,
+    priority: result.priority,
+    size: result.size,
+  });
+  return `Task added from template '${templateName}': [${task.priority}] ${task.id} | ${task.project} | ${task.description}`;
+}
+
 export function runCli(
   argv: string[],
   queue: TaskQueueManager,
@@ -175,6 +205,10 @@ export function runCli(
     }
     case "status":
       return runStatus(queue, quota);
+    case "template":
+      return runTemplate(queue, args, flags);
+    case "templates":
+      return `Available templates:\n${listTemplates()}`;
     default:
       throw new Error(`Unknown command: ${command}`);
   }
