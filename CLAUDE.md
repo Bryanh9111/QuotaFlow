@@ -5,18 +5,18 @@ Local daemon for intelligent Claude Max token quota allocation across multiple Z
 ## Architecture
 
 Single Node.js process daemon with 5-minute check loop:
-1. Detect user activity (pgrep for claude processes)
-2. Estimate remaining token quota (self-tracked via SQLite)
-3. Pick highest-priority task from JSON queue
-4. Execute via `claude -p` in an isolated feature branch
-5. Log results, notify via Discord webhook
+1. Detect user activity (pgrep for claude processes, with grace period)
+2. Estimate remaining token quota (self-tracked via SQLite, 5h window + 7-day rolling)
+3. Pick highest-priority tasks from JSON queue (up to max_concurrency, same-project excluded)
+4. Execute via `claude -p` in isolated feature branches
+5. Log results, notify via Discord webhook, send daily/weekly digests
 
 ## Tech Stack
 
 - TypeScript + Node.js (ESM)
-- SQLite via better-sqlite3 (quota tracking)
+- SQLite via better-sqlite3 (quota tracking + smart size estimation)
 - JSON file (task queue)
-- vitest (testing)
+- vitest (testing, 129 tests)
 - macOS launchd (daemon management)
 
 ## Project Structure
@@ -25,14 +25,29 @@ Single Node.js process daemon with 5-minute check loop:
 src/
   types.ts      - Shared types and constants
   config.ts     - Configuration loading and validation
-  queue.ts      - Task queue manager (JSON-based)
-  quota.ts      - Token usage tracking (SQLite)
-  activity.ts   - Claude process detection
+  queue.ts      - Task queue manager (JSON-based, priority sorted)
+  quota.ts      - Token usage tracking (SQLite, window + weekly)
+  activity.ts   - Claude process detection with inactivity threshold
   executor.ts   - Task execution with git branch isolation
-  notify.ts     - Discord webhook notifications
-  logger.ts     - Structured file logging
-  scheduler.ts  - Main daemon loop
-  index.ts      - Entry point
+  notify.ts     - Discord webhook notifications + daily/weekly digest
+  logger.ts     - Structured file logging (daily rotation)
+  scheduler.ts  - Main daemon loop (concurrent dispatch, re-entrancy guard)
+  cli.ts        - CLI subcommands (add/list/rm/status/template)
+  templates.ts  - Predefined task templates (review/test/lint/docs/refactor)
+  index.ts      - Entry point (daemon or CLI routing)
+```
+
+## CLI Commands
+
+```bash
+npx tsx src/index.ts add "task description" --project Relay --priority high --size medium
+npx tsx src/index.ts list              # Show tasks grouped by status
+npx tsx src/index.ts rm <id>           # Remove task (mark as skipped)
+npx tsx src/index.ts status            # Show quota and queue stats
+npx tsx src/index.ts template review --project Athena  # Create from template
+npx tsx src/index.ts templates         # List available templates
+npx tsx src/index.ts --dry-run         # Show what daemon would do
+npx tsx src/index.ts                   # Start daemon
 ```
 
 ## Key Conventions
@@ -42,6 +57,7 @@ src/
 - Tests in /tests directory mirroring src/ structure
 - Temp directories via tmpdir() for all test I/O
 - Dependencies injected into Scheduler for testability
+- spawn() with argv array for git commit (no shell injection)
 
 ## Safety Rules
 
@@ -50,18 +66,28 @@ src/
 - ALL automated changes go to `quotaflow/task-{id}-*` branches
 - Verify git working directory is clean before execution
 - Recover stuck "running" tasks on startup
-
-## Commands
-
-```bash
-npm test          # Run all tests
-npm run test:watch # Watch mode
-npm run dev       # Start daemon
-```
+- checkDigests wrapped in try/catch to prevent daemon lockup
+- Activity detector filters own child processes by command pattern
 
 ## Configuration
 
-- `~/.quotaflow/config.json` - Daemon settings
+- `~/.quotaflow/config.json` - Daemon settings (see examples/config.json)
 - `~/.quotaflow/tasks.json` - Task queue
-- `~/.quotaflow/logs/` - Execution logs
+- `~/.quotaflow/logs/` - Execution logs (daily rotation)
 - `~/.quotaflow/data.db` - SQLite usage tracking
+
+## Development
+
+```bash
+npm test           # Run all 129 tests
+npm run test:watch # Watch mode
+npm run dev        # Start daemon
+```
+
+## Next Steps (P3 - As Needed)
+
+- Web dashboard for task management and usage visualization
+- TODO.md / CLAUDE.md scanning to auto-generate tasks
+- OpenClaw integration as execution backend
+- Multi-subscription support
+- GitHub issue auto-conversion to tasks
