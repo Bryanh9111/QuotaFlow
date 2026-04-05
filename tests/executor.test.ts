@@ -69,30 +69,26 @@ describe("TaskExecutor.buildClaudeCommand", () => {
 
   it("contains required flags", () => {
     const task = makeTask({ description: "add dark mode" });
-    const cmd = ex.buildClaudeCommand(task, "/some/project/path");
+    const cmd = ex.buildClaudeCommand(task);
     expect(cmd).toContain("claude -p");
-    expect(cmd).toContain("-C");
     expect(cmd).toContain("--output-format json");
-    expect(cmd).toContain("/some/project/path");
     expect(cmd).toContain("add dark mode");
   });
 
   it("escapes single quotes in description", () => {
     const task = makeTask({ description: "fix it's broken" });
-    const cmd = ex.buildClaudeCommand(task, "/proj");
-    // Should not contain unescaped single quote that would break shell
-    // The description should be safely embedded
+    const cmd = ex.buildClaudeCommand(task);
     expect(cmd).toContain("fix it");
     expect(cmd).toContain("s broken");
-    // Verify the command starts with the right structure
     expect(cmd).toMatch(/^claude -p '/);
   });
 
-  it("wraps description and cwd in single quotes", () => {
+  it("uses cwd in execAsync not in command string", () => {
     const task = makeTask({ description: "simple task" });
-    const cmd = ex.buildClaudeCommand(task, "/my/project");
+    const cmd = ex.buildClaudeCommand(task);
     expect(cmd).toMatch(/claude -p 'simple task'/);
-    expect(cmd).toContain("-C '/my/project'");
+    // projectPath is passed via execAsync cwd option, not in command
+    expect(cmd).not.toContain("/my/project");
   });
 });
 
@@ -139,10 +135,11 @@ describe("TaskExecutor.execute", () => {
     }
   });
 
-  it("handles missing claude CLI gracefully and cleans up branch", async () => {
+  it("handles missing claude CLI gracefully and cleans up branch", { timeout: 15000 }, async () => {
     const { dir, initialBranch } = makeTempGitRepo();
     try {
-      const ex = new TaskExecutor(defaultTimeouts);
+      // Use very short timeout so test doesn't hang if claude is installed
+      const ex = new TaskExecutor({ small: 0.1, medium: 0.1, large: 0.1 });
       const task = makeTask({ id: "t2", description: "test missing cli", size: "small" });
       const result = await ex.execute(task, dir);
 

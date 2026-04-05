@@ -22,9 +22,9 @@ export class TaskExecutor {
     return `${prefix}${task.id}-${slug}`;
   }
 
-  buildClaudeCommand(task: Task, projectPath: string): string {
+  buildClaudeCommand(task: Task): string {
     const escapedDesc = task.description.replace(/'/g, "'\\''");
-    return `claude -p '${escapedDesc}' -C '${projectPath}' --output-format json`;
+    return `claude -p '${escapedDesc}' --output-format json`;
   }
 
   getTimeoutMs(size: TaskSize): number {
@@ -107,7 +107,7 @@ export class TaskExecutor {
     let tokensUsed = 0;
 
     try {
-      const cmd = this.buildClaudeCommand(task, projectPath);
+      const cmd = this.buildClaudeCommand(task);
       const { stdout, stderr } = await execAsync(cmd, {
         cwd: projectPath,
         timeout: this.getTimeoutMs(task.size),
