@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Config, Task, ExecutionResult } from "./types.js";
+import type { Config, Task, ExecutionResult, RateLimitInfo } from "./types.js";
 
 interface SchedulerDeps {
   config: Config;
@@ -26,6 +26,7 @@ interface SchedulerDeps {
   };
   executor: {
     execute(task: Task, projectPath: string): Promise<ExecutionResult>;
+    probeQuota?(): Promise<RateLimitInfo | null>;
   };
   notifier: {
     taskCompleted(task: Task, result: ExecutionResult): Promise<void>;
@@ -72,6 +73,27 @@ export class Scheduler {
     }
   }
 
+  /** Lightweight probe: check rate limit status before dispatch */
+  private async probeQuota(): Promise<"ok" | "overage" | "error"> {
+    const { executor, quota, logger } = this.deps;
+    if (!executor.probeQuota) return "ok"; // probe not available, proceed
+
+    try {
+      const rl = await executor.probeQuota();
+      if (!rl) return "ok";
+
+      if (rl.isUsingOverage || rl.status !== "allowed") {
+        quota.markRateLimited();
+        quota.setWindowResetTime(rl.resetsAt);
+        return "overage";
+      }
+      return "ok";
+    } catch {
+      logger.warn("quota probe failed, proceeding cautiously");
+      return "error";
+    }
+  }
+
   private async doTick(): Promise<void> {
     const { config, activity, quota, queue, executor, notifier, logger } = this.deps;
 
@@ -100,6 +122,27 @@ export class Scheduler {
       return;
     }
 
+    // Pre-dispatch quota probe: check rate limit and estimate usage level
+    const probeResult = await this.probeQuota();
+    if (probeResult === "overage") {
+      logger.warn("probe detected overage quota - skipping dispatch until reset");
+      return;
+    }
+
+    // Estimate usage percentage from self-tracked data for task size gating
+    const windowCapacity = config.quota.tokens_per_5h_window;
+    const selfTrackedUsed = windowCapacity - available;
+    const usagePct = windowCapacity > 0 ? (selfTrackedUsed / windowCapacity) * 100 : 0;
+    let allowedSize: "small" | "medium" | "large" = "large";
+    if (usagePct >= 90) {
+      logger.debug("tick skipped: usage >= 90%, waiting for reset", { usagePct: Math.round(usagePct) });
+      return;
+    } else if (usagePct >= 75) {
+      allowedSize = "small";
+    } else if (usagePct >= 60) {
+      allowedSize = "medium";
+    }
+
     const maxConcurrency = config.max_concurrency ?? 1;
 
     // Collect tasks to dispatch this tick
@@ -114,9 +157,14 @@ export class Scheduler {
       const task = queue.pickNextExcluding(slotAvailable, Array.from(tickProjects));
       if (!task) break;
 
-      // P1: probe before large tasks
-      if (task.size === "large" && slotAvailable < 60000) {
-        logger.debug("slot skipped: insufficient quota for large task", { available: slotAvailable, needed: 60000 });
+      // Size gating based on usage percentage
+      const sizeRank = { small: 0, medium: 1, large: 2 } as const;
+      if (sizeRank[task.size] > sizeRank[allowedSize]) {
+        logger.debug("slot skipped: task size exceeds allowed level", {
+          taskSize: task.size,
+          allowedSize,
+          usagePct: Math.round(usagePct),
+        });
         break;
       }
 

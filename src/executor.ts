@@ -1,6 +1,7 @@
 import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import type { Task, TaskSize, ExecutionResult, RateLimitInfo } from "./types.js";
+export type { RateLimitInfo };
 
 const execAsync = promisify(exec);
 
@@ -83,6 +84,21 @@ export class TaskExecutor {
 
   buildClaudeArgs(task: Task): string[] {
     return ["-p", task.description, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
+  }
+
+  /** Quick probe to check current rate limit status */
+  async probeQuota(): Promise<RateLimitInfo | null> {
+    try {
+      const { stdout } = await spawnAsync(
+        "claude",
+        ["-p", "ok", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"],
+        { cwd: process.cwd(), timeout: 30000 }
+      );
+      const parsed = parseStreamOutput(stdout);
+      return parsed.rateLimit ?? null;
+    } catch {
+      return null;
+    }
   }
 
   getTimeoutMs(size: TaskSize): number {

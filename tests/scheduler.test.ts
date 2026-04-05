@@ -55,6 +55,7 @@ function mockDeps() {
     },
     executor: {
       execute: vi.fn<[Task, string], Promise<ExecutionResult>>().mockResolvedValue(makeResult()),
+      probeQuota: vi.fn().mockResolvedValue(null),
     },
     notifier: {
       taskCompleted: vi.fn<[Task, ExecutionResult], Promise<void>>().mockResolvedValue(undefined),
@@ -208,10 +209,27 @@ describe("Scheduler", () => {
     expect(deps.executor.execute).not.toHaveBeenCalled();
   });
 
-  it("P1: skips large task when insufficient quota", async () => {
+  it("skips large task when usage > 60%", async () => {
     const largeTask = makeTask({ size: "large" });
-    deps.quota.getAvailableTokens.mockReturnValue(50000); // less than 60000 needed
+    // 88000 window, 35200 available = 60% used → allowedSize = medium
+    deps.quota.getAvailableTokens.mockReturnValue(35200);
     deps.queue.pickNextExcluding.mockReturnValue(largeTask);
+    await scheduler.tick();
+    expect(deps.executor.execute).not.toHaveBeenCalled();
+  });
+
+  it("allows small task when usage 75-90%", async () => {
+    const smallTask = makeTask({ size: "small" });
+    // 88000 window, 17600 available = 80% used → allowedSize = small
+    deps.quota.getAvailableTokens.mockReturnValue(17600);
+    deps.queue.pickNextExcluding.mockReturnValue(smallTask);
+    await scheduler.tick();
+    expect(deps.executor.execute).toHaveBeenCalled();
+  });
+
+  it("skips all tasks when usage >= 90%", async () => {
+    // 88000 window, 8800 available = 90% used → skip everything
+    deps.quota.getAvailableTokens.mockReturnValue(8800);
     await scheduler.tick();
     expect(deps.executor.execute).not.toHaveBeenCalled();
   });
