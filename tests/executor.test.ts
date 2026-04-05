@@ -71,7 +71,7 @@ describe("TaskExecutor.buildClaudeCommand", () => {
     const task = makeTask({ description: "add dark mode" });
     const cmd = ex.buildClaudeCommand(task, "/some/project/path");
     expect(cmd).toContain("claude -p");
-    expect(cmd).toContain("--cwd");
+    expect(cmd).toContain("-C");
     expect(cmd).toContain("--output-format json");
     expect(cmd).toContain("/some/project/path");
     expect(cmd).toContain("add dark mode");
@@ -92,7 +92,7 @@ describe("TaskExecutor.buildClaudeCommand", () => {
     const task = makeTask({ description: "simple task" });
     const cmd = ex.buildClaudeCommand(task, "/my/project");
     expect(cmd).toMatch(/claude -p 'simple task'/);
-    expect(cmd).toContain("--cwd '/my/project'");
+    expect(cmd).toContain("-C '/my/project'");
   });
 });
 

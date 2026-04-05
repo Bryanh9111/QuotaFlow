@@ -24,7 +24,7 @@ export class TaskExecutor {
 
   buildClaudeCommand(task: Task, projectPath: string): string {
     const escapedDesc = task.description.replace(/'/g, "'\\''");
-    return `claude -p '${escapedDesc}' --cwd '${projectPath}' --output-format json`;
+    return `claude -p '${escapedDesc}' -C '${projectPath}' --output-format json`;
   }
 
   getTimeoutMs(size: TaskSize): number {
