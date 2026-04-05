@@ -40,7 +40,11 @@ function main(): void {
 
   const logger = new Logger(LOGS_DIR);
   const activity = new ActivityDetector(config.inactivity_threshold_minutes);
-  const executor = new TaskExecutor(config.timeouts);
+  const executor = new TaskExecutor({
+    small: config.timeouts.small_minutes,
+    medium: config.timeouts.medium_minutes,
+    large: config.timeouts.large_minutes,
+  });
   const notifier = new Notifier(config.discord_webhook_url);
 
   const scheduler = new Scheduler({
