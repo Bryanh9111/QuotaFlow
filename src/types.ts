@@ -61,7 +61,7 @@ export interface ExecutionResult {
 }
 
 export const DEFAULT_CONFIG: Config = {
-  projects_root: "/Users/zion/Repos/Zylo",
+  projects_root: "",
   inactivity_threshold_minutes: 15,
   check_interval_minutes: 5,
   max_concurrency: 1,

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { randomUUID } from "crypto";
-import { join } from "path";
+import { join, resolve, sep } from "path";
 import type { Task, TaskQueue, TaskPriority, TaskSize } from "./types.js";
 import { SIZE_TOKEN_ESTIMATES } from "./types.js";
 
@@ -53,7 +53,11 @@ export class TaskQueueManager {
   }
 
   addTask(input: AddTaskInput): Task {
-    const projectPath = join(this.projectsRoot, input.project);
+    const projectPath = resolve(this.projectsRoot, input.project);
+    const rootResolved = resolve(this.projectsRoot);
+    if (!projectPath.startsWith(rootResolved + sep)) {
+      throw new Error(`Project path escapes projects root: ${input.project}`);
+    }
     if (!existsSync(projectPath)) {
       throw new Error(
         `Project path does not exist: ${projectPath}`

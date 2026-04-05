@@ -81,9 +81,8 @@ export class TaskExecutor {
     return `${prefix}${task.id}-${slug}`;
   }
 
-  buildClaudeCommand(task: Task): string {
-    const escapedDesc = task.description.replace(/'/g, "'\\''");
-    return `claude -p '${escapedDesc}' --output-format stream-json --verbose --dangerously-skip-permissions`;
+  buildClaudeArgs(task: Task): string[] {
+    return ["-p", task.description, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
   }
 
   getTimeoutMs(size: TaskSize): number {
@@ -167,11 +166,10 @@ export class TaskExecutor {
     let rateLimit: RateLimitInfo | undefined;
 
     try {
-      const cmd = this.buildClaudeCommand(task);
-      const { stdout, stderr } = await execAsync(cmd, {
+      const args = this.buildClaudeArgs(task);
+      const { stdout, stderr } = await spawnAsync("claude", args, {
         cwd: projectPath,
         timeout: this.getTimeoutMs(task.size),
-        maxBuffer: 50 * 1024 * 1024, // 50MB for stream-json
       });
       claudeStdout = stdout;
       claudeStderr = stderr;
@@ -291,17 +289,27 @@ export class TaskExecutor {
 function spawnAsync(
   cmd: string,
   args: string[],
-  options: { cwd: string }
+  options: { cwd: string; timeout?: number }
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { ...options, stdio: ["ignore", "pipe", "pipe"] });
+    const proc = spawn(cmd, args, { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
+    let killed = false;
+
+    if (options.timeout) {
+      setTimeout(() => {
+        killed = true;
+        proc.kill("SIGTERM");
+      }, options.timeout);
+    }
+
     proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
     proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
     proc.on("close", (code) => {
-      if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${cmd} exited with code ${code}: ${stderr}`));
+      if (killed) reject(new Error(`${cmd} timed out after ${options.timeout}ms`));
+      else if (code === 0) resolve({ stdout, stderr });
+      else reject(new Error(`${cmd} exited with code ${code}: ${stderr.slice(0, 500)}`));
     });
     proc.on("error", reject);
   });

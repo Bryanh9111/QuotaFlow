@@ -64,31 +64,30 @@ describe("TaskExecutor.buildBranchName", () => {
   });
 });
 
-describe("TaskExecutor.buildClaudeCommand", () => {
+describe("TaskExecutor.buildClaudeArgs", () => {
   const ex = new TaskExecutor(defaultTimeouts);
 
-  it("contains required flags", () => {
+  it("returns argv array with required flags", () => {
     const task = makeTask({ description: "add dark mode" });
-    const cmd = ex.buildClaudeCommand(task);
-    expect(cmd).toContain("claude -p");
-    expect(cmd).toContain("--output-format stream-json");
-    expect(cmd).toContain("add dark mode");
+    const args = ex.buildClaudeArgs(task);
+    expect(args).toContain("-p");
+    expect(args).toContain("add dark mode");
+    expect(args).toContain("--output-format");
+    expect(args).toContain("stream-json");
+    expect(args).toContain("--dangerously-skip-permissions");
   });
 
-  it("escapes single quotes in description", () => {
+  it("passes description as-is without shell escaping", () => {
     const task = makeTask({ description: "fix it's broken" });
-    const cmd = ex.buildClaudeCommand(task);
-    expect(cmd).toContain("fix it");
-    expect(cmd).toContain("s broken");
-    expect(cmd).toMatch(/^claude -p '/);
+    const args = ex.buildClaudeArgs(task);
+    // spawn handles quoting, no shell escaping needed
+    expect(args).toContain("fix it's broken");
   });
 
-  it("uses cwd in execAsync not in command string", () => {
+  it("does not include project path in args", () => {
     const task = makeTask({ description: "simple task" });
-    const cmd = ex.buildClaudeCommand(task);
-    expect(cmd).toMatch(/claude -p 'simple task'/);
-    // projectPath is passed via execAsync cwd option, not in command
-    expect(cmd).not.toContain("/my/project");
+    const args = ex.buildClaudeArgs(task);
+    expect(args.join(" ")).not.toContain("/my/project");
   });
 });
 
