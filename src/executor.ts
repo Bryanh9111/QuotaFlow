@@ -40,12 +40,16 @@ function parseStreamOutput(stdout: string): {
       const event: StreamEvent = JSON.parse(line);
 
       if (event.type === "rate_limit_event" && event.rate_limit_info) {
-        rateLimit = {
-          status: event.rate_limit_info.status,
-          rateLimitType: event.rate_limit_info.rateLimitType,
-          resetsAt: event.rate_limit_info.resetsAt,
-          isUsingOverage: event.rate_limit_info.isUsingOverage ?? false,
-        };
+        const rl = event.rate_limit_info;
+        // Prefer five_hour over seven_day for session-level gating
+        if (!rateLimit || rl.rateLimitType === "five_hour") {
+          rateLimit = {
+            status: rl.status,
+            rateLimitType: rl.rateLimitType,
+            resetsAt: rl.resetsAt,
+            isUsingOverage: rl.isUsingOverage ?? false,
+          };
+        }
       }
 
       if (event.type === "result" && event.usage) {
