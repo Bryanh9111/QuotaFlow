@@ -14,9 +14,9 @@ describe("ActivityDetector", () => {
     expect(active).toBe(false);
   });
 
-  it("reports active when claude processes are running", async () => {
+  it("reports active when claude CLI session is running", async () => {
     vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([
-      { pid: 1234, command: "node claude" },
+      { pid: 1234, command: "/Users/zion/.local/bin/claude --resume abc123" },
     ]);
     const active = await detector.isUserActive();
     expect(active).toBe(true);
@@ -25,26 +25,48 @@ describe("ActivityDetector", () => {
   it("excludes own PIDs registered via registerOwnPid", async () => {
     detector.registerOwnPid(1234);
     vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([
-      { pid: 1234, command: "node claude" },
+      { pid: 1234, command: "/Users/zion/.local/bin/claude --resume abc" },
     ]);
     const active = await detector.isUserActive();
     expect(active).toBe(false);
   });
 
-  it("excludes multiple own PIDs and reports inactive when all excluded", async () => {
-    detector.registerOwnPid(1234);
-    detector.registerOwnPid(5678);
+  it("excludes daemon's own spawned claude -p processes", async () => {
     vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([
-      { pid: 1234, command: "node claude" },
-      { pid: 5678, command: "node claude worker" },
+      { pid: 5678, command: "/Users/zion/.local/bin/claude -p task --output-format stream-json --dangerously-skip-permissions" },
     ]);
     const active = await detector.isUserActive();
     expect(active).toBe(false);
+  });
+
+  it("excludes Claude Desktop app processes", async () => {
+    vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([
+      { pid: 2000, command: "/Users/zion/Library/Application Support/Claude/claude-code/2.1.87/claude.app/Contents/MacOS/claude --output-format stream-json" },
+    ]);
+    const active = await detector.isUserActive();
+    expect(active).toBe(false);
+  });
+
+  it("excludes plugin and MCP processes", async () => {
+    vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([
+      { pid: 3000, command: "bun run --cwd /path/to/plugin start" },
+      { pid: 3001, command: "node /path/to/mcp-server.cjs" },
+    ]);
+    const active = await detector.isUserActive();
+    expect(active).toBe(false);
+  });
+
+  it("detects user's interactive CLI with channels/plugins as active", async () => {
+    vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([
+      { pid: 4000, command: "/Users/zion/.local/bin/claude --channels plugin:discord --dangerously-skip-permissions" },
+    ]);
+    const active = await detector.isUserActive();
+    // This has --dangerously-skip-permissions but NOT stream-json, so it's user session
+    expect(active).toBe(true);
   });
 
   it("reports active when last active was within threshold", async () => {
     vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([]);
-    // 5 minutes ago, threshold is 15 — still active
     const recentTime = new Date(Date.now() - 5 * 60 * 1000);
     detector.setLastActiveTime(recentTime);
     const active = await detector.isUserActive();
@@ -53,21 +75,9 @@ describe("ActivityDetector", () => {
 
   it("reports inactive when last active time is past threshold", async () => {
     vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([]);
-    // 20 minutes ago, threshold is 15 — inactive
     const oldTime = new Date(Date.now() - 20 * 60 * 1000);
     detector.setLastActiveTime(oldTime);
     const active = await detector.isUserActive();
     expect(active).toBe(false);
-  });
-
-  it("reports active when non-own process exists even if lastActiveTime is stale", async () => {
-    detector.registerOwnPid(9999);
-    vi.spyOn(detector, "getClaudeProcesses").mockResolvedValue([
-      { pid: 1111, command: "claude session" },
-    ]);
-    const oldTime = new Date(Date.now() - 60 * 60 * 1000);
-    detector.setLastActiveTime(oldTime);
-    const active = await detector.isUserActive();
-    expect(active).toBe(true);
   });
 });

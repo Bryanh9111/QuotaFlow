@@ -43,27 +43,36 @@ export class ActivityDetector {
     }
   }
 
-  private isBackgroundProcess(command: string): boolean {
-    // Exclude non-interactive processes that always run
-    const backgroundPatterns = [
-      "Claude.app",           // Desktop app
+  private isOwnProcess(command: string): boolean {
+    // Exclude QuotaFlow's own spawned claude -p processes
+    // They always have --dangerously-skip-permissions + stream-json combo
+    return command.includes("quotaflow") ||
+      (command.includes("--dangerously-skip-permissions") && command.includes("stream-json"));
+  }
+
+  private isClaudeCliSession(command: string): boolean {
+    // Exclude non-CLI processes that happen to contain "claude" in path
+    const nonCliPatterns = [
+      "claude.app/",          // Desktop app bundle (any path containing claude.app/)
+      "Claude.app",           // Desktop app (capitalized)
       "disclaimer",           // Desktop app wrapper
-      "plugin",               // Plugin processes
-      "mcp-server",           // MCP servers
+      "mcp-server",           // MCP server processes
       "worker-service",       // Background workers
       "chroma-mcp",           // ChromaDB MCP
-      "--output-format stream-json", // Desktop app's internal claude processes
-      "quotaflow",            // Our own processes
       "bun run",              // Plugin runners
       "uvx",                  // Python tool runners
+      "/plugins/",             // Plugin subprocess paths
     ];
-    return backgroundPatterns.some((p) => command.includes(p));
+    if (nonCliPatterns.some((p) => command.includes(p))) return false;
+
+    // Must be an actual claude CLI binary (not a subprocess of desktop app)
+    return command.includes("/claude") || command.startsWith("claude ");
   }
 
   async isUserActive(): Promise<boolean> {
     const processes = await this.getClaudeProcesses();
     const external = processes.filter(
-      (p) => !this.ownPids.has(p.pid) && !this.isBackgroundProcess(p.command)
+      (p) => !this.ownPids.has(p.pid) && !this.isOwnProcess(p.command) && this.isClaudeCliSession(p.command)
     );
 
     if (external.length > 0) {
