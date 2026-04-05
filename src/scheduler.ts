@@ -197,10 +197,14 @@ export class Scheduler {
           type: rl.rateLimitType,
           status: rl.status,
           resetsAt: new Date(rl.resetsAt * 1000).toISOString(),
+          isUsingOverage: rl.isUsingOverage,
         });
-        if (rl.status !== "allowed") {
+        if (rl.status !== "allowed" || rl.isUsingOverage) {
           quota.markRateLimited();
           quota.setWindowResetTime(rl.resetsAt);
+          if (rl.isUsingOverage) {
+            logger.warn("entered overage quota - stopping dispatch until window resets");
+          }
         }
       }
 
