@@ -43,10 +43,27 @@ export class ActivityDetector {
     }
   }
 
+  private isBackgroundProcess(command: string): boolean {
+    // Exclude non-interactive processes that always run
+    const backgroundPatterns = [
+      "Claude.app",           // Desktop app
+      "disclaimer",           // Desktop app wrapper
+      "plugin",               // Plugin processes
+      "mcp-server",           // MCP servers
+      "worker-service",       // Background workers
+      "chroma-mcp",           // ChromaDB MCP
+      "--output-format stream-json", // Desktop app's internal claude processes
+      "quotaflow",            // Our own processes
+      "bun run",              // Plugin runners
+      "uvx",                  // Python tool runners
+    ];
+    return backgroundPatterns.some((p) => command.includes(p));
+  }
+
   async isUserActive(): Promise<boolean> {
     const processes = await this.getClaudeProcesses();
     const external = processes.filter(
-      (p) => !this.ownPids.has(p.pid) && !p.command.includes("quotaflow")
+      (p) => !this.ownPids.has(p.pid) && !this.isBackgroundProcess(p.command)
     );
 
     if (external.length > 0) {
