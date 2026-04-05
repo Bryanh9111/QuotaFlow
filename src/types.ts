@@ -41,6 +41,13 @@ export interface Config {
   weekly_report_day: number;
 }
 
+export interface RateLimitInfo {
+  status: string;         // "allowed" or "rejected"
+  rateLimitType: string;  // "five_hour" or "seven_day"
+  resetsAt: number;       // Unix timestamp
+  isUsingOverage: boolean;
+}
+
 export interface ExecutionResult {
   task_id: string;
   success: boolean;
@@ -50,6 +57,7 @@ export interface ExecutionResult {
   stdout: string;
   stderr: string;
   error?: string;
+  rate_limit?: RateLimitInfo;
 }
 
 export const DEFAULT_CONFIG: Config = {

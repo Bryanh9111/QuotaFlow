@@ -152,8 +152,34 @@ export class QuotaMonitor {
       .run();
   }
 
+  /** Store the real reset timestamp from Claude's rate_limit_event */
+  setWindowResetTime(unixTimestamp: number): void {
+    this.db
+      .prepare(
+        "INSERT INTO window_state (key, value) VALUES ('resets_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+      )
+      .run(unixTimestamp.toString());
+  }
+
+  /** Check if rate-limited window has reset based on real timestamp */
+  private checkRealReset(): boolean {
+    const row = this.db
+      .prepare("SELECT value FROM window_state WHERE key = 'resets_at'")
+      .get() as { value: string } | undefined;
+    if (!row) return false;
+    const resetsAt = parseInt(row.value, 10);
+    if (Date.now() / 1000 >= resetsAt) {
+      // Window has reset - clear rate limit and reset time
+      this.clearRateLimit();
+      this.db.prepare("DELETE FROM window_state WHERE key = 'resets_at'").run();
+      return true;
+    }
+    return false;
+  }
+
   isWindowExhausted(): boolean {
-    // Calling ensureFreshWindow resets rate_limited flag if window rolled
+    // Check real reset time from Claude's rate_limit_event first
+    this.checkRealReset();
     this.ensureFreshWindow();
     const row = this.db
       .prepare("SELECT value FROM window_state WHERE key = 'rate_limited'")

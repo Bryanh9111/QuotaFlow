@@ -40,6 +40,7 @@ function mockDeps() {
       getAvailableTokens: vi.fn<[], number>().mockReturnValue(20000),
       recordUsage: vi.fn<[string, number, number], void>(),
       markRateLimited: vi.fn<[], void>(),
+      setWindowResetTime: vi.fn<[number], void>(),
       isWindowExhausted: vi.fn<[], boolean>().mockReturnValue(false),
       getWeeklyUsage: vi.fn().mockReturnValue({ total_tokens: 0, total_duration_ms: 0, task_count: 0 }),
     },

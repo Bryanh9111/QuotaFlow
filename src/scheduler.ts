@@ -11,6 +11,7 @@ interface SchedulerDeps {
     getAvailableTokens(): number;
     recordUsage(taskId: string, tokens: number, durationMs: number): void;
     markRateLimited(): void;
+    setWindowResetTime(unixTimestamp: number): void;
     isWindowExhausted(): boolean;
     getWeeklyUsage(): { total_tokens: number; total_duration_ms: number; task_count: number };
   };
@@ -188,6 +189,20 @@ export class Scheduler {
       }
 
       const result = value as ExecutionResult;
+
+      // Use real rate limit data from stream-json if available
+      if (result.rate_limit) {
+        const rl = result.rate_limit;
+        logger.info("rate limit status from claude", {
+          type: rl.rateLimitType,
+          status: rl.status,
+          resetsAt: new Date(rl.resetsAt * 1000).toISOString(),
+        });
+        if (rl.status !== "allowed") {
+          quota.markRateLimited();
+          quota.setWindowResetTime(rl.resetsAt);
+        }
+      }
 
       if (result.success) {
         queue.completeTask(task.id, {

@@ -1,8 +1,67 @@
 import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import type { Task, TaskSize, ExecutionResult } from "./types.js";
+import type { Task, TaskSize, ExecutionResult, RateLimitInfo } from "./types.js";
 
 const execAsync = promisify(exec);
+
+interface StreamEvent {
+  type: string;
+  subtype?: string;
+  result?: string;
+  usage?: {
+    input_tokens?: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+    output_tokens?: number;
+  };
+  rate_limit_info?: {
+    status: string;
+    resetsAt: number;
+    rateLimitType: string;
+    overageStatus?: string;
+    overageResetsAt?: number;
+    isUsingOverage?: boolean;
+  };
+}
+
+function parseStreamOutput(stdout: string): {
+  tokensUsed: number;
+  rateLimit: RateLimitInfo | undefined;
+  resultText: string;
+} {
+  let tokensUsed = 0;
+  let rateLimit: RateLimitInfo | undefined;
+  let resultText = "";
+
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const event: StreamEvent = JSON.parse(line);
+
+      if (event.type === "rate_limit_event" && event.rate_limit_info) {
+        rateLimit = {
+          status: event.rate_limit_info.status,
+          rateLimitType: event.rate_limit_info.rateLimitType,
+          resetsAt: event.rate_limit_info.resetsAt,
+          isUsingOverage: event.rate_limit_info.isUsingOverage ?? false,
+        };
+      }
+
+      if (event.type === "result" && event.usage) {
+        tokensUsed =
+          (event.usage.input_tokens ?? 0) +
+          (event.usage.cache_creation_input_tokens ?? 0) +
+          (event.usage.cache_read_input_tokens ?? 0) +
+          (event.usage.output_tokens ?? 0);
+        resultText = event.result ?? "";
+      }
+    } catch {
+      // skip non-JSON lines
+    }
+  }
+
+  return { tokensUsed, rateLimit, resultText };
+}
 
 export class TaskExecutor {
   private timeouts: { small: number; medium: number; large: number };
@@ -13,7 +72,7 @@ export class TaskExecutor {
 
   buildBranchName(task: Task): string {
     const prefix = "quotaflow/task-";
-    const maxSlugLen = 60 - prefix.length - task.id.length - 1; // -1 for the dash between id and slug
+    const maxSlugLen = 60 - prefix.length - task.id.length - 1;
     const slug = task.description
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -24,7 +83,7 @@ export class TaskExecutor {
 
   buildClaudeCommand(task: Task): string {
     const escapedDesc = task.description.replace(/'/g, "'\\''");
-    return `claude -p '${escapedDesc}' --output-format json --dangerously-skip-permissions`;
+    return `claude -p '${escapedDesc}' --output-format stream-json --verbose --dangerously-skip-permissions`;
   }
 
   getTimeoutMs(size: TaskSize): number {
@@ -101,33 +160,26 @@ export class TaskExecutor {
       };
     }
 
-    // Run claude CLI
+    // Run claude CLI with stream-json output
     let claudeStdout = "";
     let claudeStderr = "";
     let tokensUsed = 0;
+    let rateLimit: RateLimitInfo | undefined;
 
     try {
       const cmd = this.buildClaudeCommand(task);
       const { stdout, stderr } = await execAsync(cmd, {
         cwd: projectPath,
         timeout: this.getTimeoutMs(task.size),
+        maxBuffer: 50 * 1024 * 1024, // 50MB for stream-json
       });
       claudeStdout = stdout;
       claudeStderr = stderr;
 
-      // Parse token usage from JSON output
-      try {
-        const parsed = JSON.parse(stdout);
-        if (parsed?.usage?.input_tokens !== undefined || parsed?.usage?.output_tokens !== undefined) {
-          tokensUsed = (parsed.usage.input_tokens ?? 0) + (parsed.usage.output_tokens ?? 0);
-        } else if (parsed?.tokens_used !== undefined) {
-          tokensUsed = parsed.tokens_used;
-        } else {
-          tokensUsed = Math.floor(stdout.length / 4);
-        }
-      } catch {
-        tokensUsed = Math.floor(stdout.length / 4);
-      }
+      // Parse stream-json output for real usage and rate limit data
+      const parsed = parseStreamOutput(stdout);
+      tokensUsed = parsed.tokensUsed;
+      rateLimit = parsed.rateLimit;
     } catch (err) {
       // Claude failed - clean up branch and return failure
       try {
@@ -136,6 +188,13 @@ export class TaskExecutor {
       } catch {
         // best-effort cleanup
       }
+
+      // Try to parse partial output for rate limit info
+      if (claudeStdout) {
+        const parsed = parseStreamOutput(claudeStdout);
+        rateLimit = parsed.rateLimit;
+      }
+
       return {
         task_id: task.id,
         success: false,
@@ -145,6 +204,7 @@ export class TaskExecutor {
         stdout: claudeStdout,
         stderr: claudeStderr,
         error: `claude CLI failed: ${err instanceof Error ? err.message : String(err)}`,
+        rate_limit: rateLimit,
       };
     }
 
@@ -154,7 +214,6 @@ export class TaskExecutor {
       const { stdout: diffStat } = await execAsync("git diff --stat", { cwd: projectPath });
       hasDiff = diffStat.trim() !== "";
       if (!hasDiff) {
-        // Also check staged and untracked
         const { stdout: status2 } = await execAsync("git status --porcelain", { cwd: projectPath });
         hasDiff = status2.trim() !== "";
       }
@@ -163,7 +222,6 @@ export class TaskExecutor {
     }
 
     if (!hasDiff) {
-      // P0: clean up empty branch
       try {
         await execAsync(`git checkout ${originalBranch}`, { cwd: projectPath });
         await execAsync(`git branch -D ${branchName}`, { cwd: projectPath });
@@ -178,10 +236,11 @@ export class TaskExecutor {
         duration_ms: Date.now() - start,
         stdout: claudeStdout,
         stderr: claudeStderr,
+        rate_limit: rateLimit,
       };
     }
 
-    // Commit changes using spawn to avoid shell injection (P0)
+    // Commit changes using spawn to avoid shell injection
     try {
       await execAsync("git add -A", { cwd: projectPath });
       await spawnAsync(
@@ -205,6 +264,7 @@ export class TaskExecutor {
         stdout: claudeStdout,
         stderr: claudeStderr,
         error: `git commit failed: ${err instanceof Error ? err.message : String(err)}`,
+        rate_limit: rateLimit,
       };
     }
 
@@ -223,6 +283,7 @@ export class TaskExecutor {
       duration_ms: Date.now() - start,
       stdout: claudeStdout,
       stderr: claudeStderr,
+      rate_limit: rateLimit,
     };
   }
 }

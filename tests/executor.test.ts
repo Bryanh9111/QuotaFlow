@@ -71,7 +71,7 @@ describe("TaskExecutor.buildClaudeCommand", () => {
     const task = makeTask({ description: "add dark mode" });
     const cmd = ex.buildClaudeCommand(task);
     expect(cmd).toContain("claude -p");
-    expect(cmd).toContain("--output-format json");
+    expect(cmd).toContain("--output-format stream-json");
     expect(cmd).toContain("add dark mode");
   });
 
