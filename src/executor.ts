@@ -86,8 +86,20 @@ export class TaskExecutor {
     return `${prefix}${task.id}-${slug}`;
   }
 
+  private static HANDOVER_SUFFIX = `
+
+After completing the task above, create a handover document at doc/handover-{task-slug}.md containing:
+1. What was done (summary of changes)
+2. Key decisions made and why
+3. What to do next (concrete next steps for the following agent session)
+4. Known risks or caveats
+5. Files modified and their purpose
+Keep it concise and actionable for the next claude session to pick up seamlessly.`;
+
   buildClaudeArgs(task: Task): string[] {
-    return ["-p", task.description, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
+    const slug = task.id.slice(0, 8);
+    const prompt = task.description + TaskExecutor.HANDOVER_SUFFIX.replace("{task-slug}", slug);
+    return ["-p", prompt, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
   }
 
   /** Quick probe to check current rate limit status */

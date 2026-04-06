@@ -67,21 +67,25 @@ describe("TaskExecutor.buildBranchName", () => {
 describe("TaskExecutor.buildClaudeArgs", () => {
   const ex = new TaskExecutor(defaultTimeouts);
 
-  it("returns argv array with required flags", () => {
+  it("returns argv array with required flags and handover suffix", () => {
     const task = makeTask({ description: "add dark mode" });
     const args = ex.buildClaudeArgs(task);
     expect(args).toContain("-p");
-    expect(args).toContain("add dark mode");
+    const prompt = args[args.indexOf("-p") + 1];
+    expect(prompt).toContain("add dark mode");
+    expect(prompt).toContain("handover document");
     expect(args).toContain("--output-format");
     expect(args).toContain("stream-json");
     expect(args).toContain("--dangerously-skip-permissions");
   });
 
-  it("passes description as-is without shell escaping", () => {
+  it("includes description with handover in prompt arg", () => {
     const task = makeTask({ description: "fix it's broken" });
     const args = ex.buildClaudeArgs(task);
-    // spawn handles quoting, no shell escaping needed
-    expect(args).toContain("fix it's broken");
+    const prompt = args[args.indexOf("-p") + 1];
+    expect(prompt).toContain("fix it's broken");
+    expect(prompt).toContain("What was done");
+    expect(prompt).toContain("next steps");
   });
 
   it("does not include project path in args", () => {
