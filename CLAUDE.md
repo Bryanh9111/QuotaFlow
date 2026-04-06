@@ -69,6 +69,29 @@ npx tsx src/index.ts                   # Start daemon
 - checkDigests wrapped in try/catch to prevent daemon lockup
 - Activity detector filters own child processes by command pattern
 
+## Quota Management
+
+Dual-layer quota awareness using real data from Claude CLI's rate_limit_event:
+
+**Data source:** `--output-format stream-json --verbose` returns rate_limit_event with:
+- `rateLimitType`: "five_hour" (session) or "seven_day" (weekly)
+- `status`: "allowed" | "allowed_warning" | "rejected"
+- `utilization`: 0.0-1.0 (percentage used)
+- `isUsingOverage`: boolean (extra usage detection)
+- `resetsAt`: Unix timestamp
+
+**Task size gating (applies to BOTH session and weekly, uses the stricter):**
+| Utilization | Allowed task sizes |
+|-------------|-------------------|
+| < 60%       | small, medium, large |
+| 60-75%      | small, medium |
+| 75-90%      | small only |
+| >= 90%      | stop all dispatch |
+
+**Pre-dispatch probe:** Runs `claude -p "ok"` before each dispatch cycle to check current quota status. Costs minimal tokens but provides real-time awareness.
+
+**Extra usage protection:** If `isUsingOverage === true`, immediately stops dispatch.
+
 ## Configuration
 
 - `~/.quotaflow/config.json` - Daemon settings (see examples/config.json)
@@ -79,7 +102,7 @@ npx tsx src/index.ts                   # Start daemon
 ## Development
 
 ```bash
-npm test           # Run all 129 tests
+npm test           # Run all 133 tests
 npm run test:watch # Watch mode
 npm run dev        # Start daemon
 ```
