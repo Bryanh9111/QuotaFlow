@@ -26,7 +26,7 @@ interface SchedulerDeps {
   };
   executor: {
     execute(task: Task, projectPath: string): Promise<ExecutionResult>;
-    probeQuota?(): Promise<RateLimitInfo | null>;
+    probeQuota?(): Promise<{ session: RateLimitInfo | null; weekly: RateLimitInfo | null }>;
   };
   notifier: {
     taskCompleted(task: Task, result: ExecutionResult): Promise<void>;
@@ -48,6 +48,7 @@ export class Scheduler {
   private lastDailyDigest: string | null = null;
   private lastWeeklyDigest: string | null = null;
   private activeProjects: Set<string> = new Set();
+  private weeklyAllowedSize: "small" | "medium" | "large" = "large";
 
   constructor(private deps: SchedulerDeps, options?: { dryRun?: boolean }) {
     this.dryRun = options?.dryRun ?? false;
@@ -73,20 +74,49 @@ export class Scheduler {
     }
   }
 
-  /** Lightweight probe: check rate limit status before dispatch */
-  private async probeQuota(): Promise<"ok" | "overage" | "error"> {
+  /** Lightweight probe: check session + weekly rate limit status before dispatch */
+  private async probeQuota(): Promise<"ok" | "overage" | "weekly_limit" | "error"> {
     const { executor, quota, logger } = this.deps;
-    if (!executor.probeQuota) return "ok"; // probe not available, proceed
+    if (!executor.probeQuota) return "ok";
 
     try {
-      const rl = await executor.probeQuota();
-      if (!rl) return "ok";
+      const { session, weekly } = await executor.probeQuota();
 
-      if (rl.isUsingOverage || (rl.status !== "allowed" && rl.status !== "allowed_warning")) {
-        quota.markRateLimited();
-        quota.setWindowResetTime(rl.resetsAt);
-        return "overage";
+      // Check session (five_hour) limit
+      if (session) {
+        if (session.isUsingOverage || (session.status !== "allowed" && session.status !== "allowed_warning")) {
+          quota.markRateLimited();
+          quota.setWindowResetTime(session.resetsAt);
+          return "overage";
+        }
       }
+
+      // Check weekly (seven_day) limit
+      if (weekly) {
+        const weeklyPct = (weekly.utilization ?? 0) * 100;
+        logger.debug("weekly quota status", { utilization: `${weeklyPct.toFixed(0)}%`, status: weekly.status });
+
+        if (weekly.isUsingOverage || (weekly.status !== "allowed" && weekly.status !== "allowed_warning")) {
+          logger.warn("weekly quota exhausted - stopping dispatch", { utilization: `${weeklyPct.toFixed(0)}%` });
+          return "weekly_limit";
+        }
+
+        // Stop if weekly > 90% to preserve quota for manual use
+        if (weeklyPct >= 90) {
+          logger.warn("weekly quota > 90% - stopping dispatch to preserve manual quota", { utilization: `${weeklyPct.toFixed(0)}%` });
+          return "weekly_limit";
+        }
+
+        // Only allow small tasks if weekly > 75%
+        if (weeklyPct >= 75) {
+          this.weeklyAllowedSize = "small";
+        } else if (weeklyPct >= 60) {
+          this.weeklyAllowedSize = "medium";
+        } else {
+          this.weeklyAllowedSize = "large";
+        }
+      }
+
       return "ok";
     } catch {
       logger.warn("quota probe failed, proceeding cautiously");
@@ -114,18 +144,15 @@ export class Scheduler {
       return;
     }
 
-    // P1: check weekly quota
-    const weekly = quota.getWeeklyUsage();
-    const weeklyLimitTokens = config.quota.weekly_compute_hours * 3600 * 10; // rough estimate: 10 tokens/sec compute
-    if (weekly.total_tokens >= weeklyLimitTokens) {
-      logger.debug("tick skipped: weekly quota reached", { used: weekly.total_tokens, limit: weeklyLimitTokens });
-      return;
-    }
-
-    // Pre-dispatch quota probe: check rate limit and estimate usage level
+    // Pre-dispatch quota probe: check session + weekly rate limit (real data from Claude CLI)
+    this.weeklyAllowedSize = "large"; // reset before probe
     const probeResult = await this.probeQuota();
     if (probeResult === "overage") {
-      logger.warn("probe detected overage quota - skipping dispatch until reset");
+      logger.warn("probe detected session overage - skipping dispatch until reset");
+      return;
+    }
+    if (probeResult === "weekly_limit") {
+      logger.warn("weekly quota limit reached - skipping dispatch until weekly reset");
       return;
     }
 
@@ -157,13 +184,16 @@ export class Scheduler {
       const task = queue.pickNextExcluding(slotAvailable, Array.from(tickProjects));
       if (!task) break;
 
-      // Size gating based on usage percentage
+      // Size gating: use the more restrictive of session and weekly limits
       const sizeRank = { small: 0, medium: 1, large: 2 } as const;
-      if (sizeRank[task.size] > sizeRank[allowedSize]) {
+      const effectiveAllowed = sizeRank[this.weeklyAllowedSize] < sizeRank[allowedSize]
+        ? this.weeklyAllowedSize : allowedSize;
+      if (sizeRank[task.size] > sizeRank[effectiveAllowed]) {
         logger.debug("slot skipped: task size exceeds allowed level", {
           taskSize: task.size,
-          allowedSize,
-          usagePct: Math.round(usagePct),
+          sessionAllowed: allowedSize,
+          weeklyAllowed: this.weeklyAllowedSize,
+          effective: effectiveAllowed,
         });
         break;
       }

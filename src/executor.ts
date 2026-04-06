@@ -22,16 +22,19 @@ interface StreamEvent {
     overageStatus?: string;
     overageResetsAt?: number;
     isUsingOverage?: boolean;
+    utilization?: number;
   };
 }
 
 function parseStreamOutput(stdout: string): {
   tokensUsed: number;
   rateLimit: RateLimitInfo | undefined;
+  weeklyRateLimit: RateLimitInfo | undefined;
   resultText: string;
 } {
   let tokensUsed = 0;
   let rateLimit: RateLimitInfo | undefined;
+  let weeklyRateLimit: RateLimitInfo | undefined;
   let resultText = "";
 
   for (const line of stdout.split("\n")) {
@@ -41,14 +44,19 @@ function parseStreamOutput(stdout: string): {
 
       if (event.type === "rate_limit_event" && event.rate_limit_info) {
         const rl = event.rate_limit_info;
-        // Prefer five_hour over seven_day for session-level gating
-        if (!rateLimit || rl.rateLimitType === "five_hour") {
-          rateLimit = {
-            status: rl.status,
-            rateLimitType: rl.rateLimitType,
-            resetsAt: rl.resetsAt,
-            isUsingOverage: rl.isUsingOverage ?? false,
-          };
+        const info: RateLimitInfo = {
+          status: rl.status,
+          rateLimitType: rl.rateLimitType,
+          resetsAt: rl.resetsAt,
+          isUsingOverage: rl.isUsingOverage ?? false,
+          utilization: rl.utilization,
+        };
+        if (rl.rateLimitType === "five_hour") {
+          rateLimit = info;
+        } else if (rl.rateLimitType === "seven_day") {
+          weeklyRateLimit = info;
+        } else if (!rateLimit) {
+          rateLimit = info;
         }
       }
 
@@ -65,7 +73,7 @@ function parseStreamOutput(stdout: string): {
     }
   }
 
-  return { tokensUsed, rateLimit, resultText };
+  return { tokensUsed, rateLimit, weeklyRateLimit, resultText };
 }
 
 export class TaskExecutor {
@@ -102,8 +110,8 @@ Keep it concise and actionable for the next claude session to pick up seamlessly
     return ["-p", prompt, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
   }
 
-  /** Quick probe to check current rate limit status */
-  async probeQuota(): Promise<RateLimitInfo | null> {
+  /** Quick probe to check current rate limit status (session + weekly) */
+  async probeQuota(): Promise<{ session: RateLimitInfo | null; weekly: RateLimitInfo | null }> {
     try {
       const { stdout } = await spawnAsync(
         "claude",
@@ -111,9 +119,9 @@ Keep it concise and actionable for the next claude session to pick up seamlessly
         { cwd: process.cwd(), timeout: 30000 }
       );
       const parsed = parseStreamOutput(stdout);
-      return parsed.rateLimit ?? null;
+      return { session: parsed.rateLimit ?? null, weekly: parsed.weeklyRateLimit ?? null };
     } catch {
-      return null;
+      return { session: null, weekly: null };
     }
   }
 
@@ -196,6 +204,7 @@ Keep it concise and actionable for the next claude session to pick up seamlessly
     let claudeStderr = "";
     let tokensUsed = 0;
     let rateLimit: RateLimitInfo | undefined;
+    let weeklyRateLimit: RateLimitInfo | undefined;
 
     try {
       const args = this.buildClaudeArgs(task);
@@ -210,6 +219,7 @@ Keep it concise and actionable for the next claude session to pick up seamlessly
       const parsed = parseStreamOutput(stdout);
       tokensUsed = parsed.tokensUsed;
       rateLimit = parsed.rateLimit;
+      weeklyRateLimit = parsed.weeklyRateLimit;
     } catch (err) {
       // Claude failed - clean up branch and return failure
       try {
@@ -223,6 +233,7 @@ Keep it concise and actionable for the next claude session to pick up seamlessly
       if (claudeStdout) {
         const parsed = parseStreamOutput(claudeStdout);
         rateLimit = parsed.rateLimit;
+        weeklyRateLimit = parsed.weeklyRateLimit;
       }
 
       return {
@@ -235,6 +246,7 @@ Keep it concise and actionable for the next claude session to pick up seamlessly
         stderr: claudeStderr,
         error: `claude CLI failed: ${err instanceof Error ? err.message : String(err)}`,
         rate_limit: rateLimit,
+        weekly_rate_limit: weeklyRateLimit,
       };
     }
 
@@ -267,6 +279,7 @@ Keep it concise and actionable for the next claude session to pick up seamlessly
         stdout: claudeStdout,
         stderr: claudeStderr,
         rate_limit: rateLimit,
+        weekly_rate_limit: weeklyRateLimit,
       };
     }
 
@@ -295,6 +308,7 @@ Keep it concise and actionable for the next claude session to pick up seamlessly
         stderr: claudeStderr,
         error: `git commit failed: ${err instanceof Error ? err.message : String(err)}`,
         rate_limit: rateLimit,
+        weekly_rate_limit: weeklyRateLimit,
       };
     }
 

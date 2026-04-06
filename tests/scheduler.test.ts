@@ -55,7 +55,7 @@ function mockDeps() {
     },
     executor: {
       execute: vi.fn<[Task, string], Promise<ExecutionResult>>().mockResolvedValue(makeResult()),
-      probeQuota: vi.fn().mockResolvedValue(null),
+      probeQuota: vi.fn().mockResolvedValue({ session: null, weekly: null }),
     },
     notifier: {
       taskCompleted: vi.fn<[Task, ExecutionResult], Promise<void>>().mockResolvedValue(undefined),
@@ -198,14 +198,12 @@ describe("Scheduler", () => {
     expect(deps.activity.isUserActive).toHaveBeenCalledTimes(1);
   });
 
-  it("P1: skips when weekly quota reached", async () => {
-    deps.quota.getWeeklyUsage.mockReturnValue({
-      total_tokens: 999999999,
-      total_duration_ms: 0,
-      task_count: 100,
+  it("skips when weekly quota > 90% via probe", async () => {
+    deps.executor.probeQuota.mockResolvedValue({
+      session: null,
+      weekly: { status: "allowed_warning", rateLimitType: "seven_day", resetsAt: 9999999999, isUsingOverage: false, utilization: 0.92 },
     });
     await scheduler.tick();
-    expect(deps.queue.pickNextExcluding).not.toHaveBeenCalled();
     expect(deps.executor.execute).not.toHaveBeenCalled();
   });
 
