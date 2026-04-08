@@ -7,7 +7,7 @@
 
 ## The Actual Problem First
 
-Before I take positions, let me name what's really happening: Henry has 8 projects, one of them (Athena) is a glutton, and by mid-week the weekly quota is 68% gone. The daemon is working. The problem is fairness and visibility, not architecture.
+Before I take positions, let me name what's really happening: the maintainer has 8 projects, one of them (ProjectBeta) is a glutton, and by mid-week the weekly quota is 68% gone. The daemon is working. The problem is fairness and visibility, not architecture.
 
 Everything else on this list should be evaluated against that lens.
 
@@ -17,7 +17,7 @@ Everything else on this list should be evaluated against that lens.
 
 ### 1. Execution History DB (item #2)
 
-This is the force multiplier for everything else. Right now `usage_log` stores `task_id`, `tokens_used`, `duration_ms`, `recorded_at`, and `task_size` - but there is no `project` column. That single missing column is why we cannot answer "how much did Athena eat this week?" without joining against the task queue JSON, which is mutable and lossy (completed tasks stay, but we lose context over time).
+This is the force multiplier for everything else. Right now `usage_log` stores `task_id`, `tokens_used`, `duration_ms`, `recorded_at`, and `task_size` - but there is no `project` column. That single missing column is why we cannot answer "how much did ProjectBeta eat this week?" without joining against the task queue JSON, which is mutable and lossy (completed tasks stay, but we lose context over time).
 
 Add `project TEXT` to `usage_log`. That is one migration line and one extra field in `recordUsage()`. With that in place, per-project breakdown in the digest becomes a single GROUP BY query. The trend analysis, the per-project budget enforcement, the GC scan - all of them become trivially implementable. Without it, every other feature is building on sand.
 
@@ -25,17 +25,17 @@ Cost: 2 hours. Risk: none. Payoff: unlocks items 4, 6, and 11 for free.
 
 ### 2. Per-Project Token Budget % (item #6)
 
-Yes, this is the right priority - but only *after* we have project-tagged history (item #2). The "simpler way" people usually suggest is round-robin scheduling. Don't do it. Round-robin ignores priority and task size; it will delay a high-priority Relay task because Athena already ran once this cycle. That is worse behavior than what we have now.
+Yes, this is the right priority - but only *after* we have project-tagged history (item #2). The "simpler way" people usually suggest is round-robin scheduling. Don't do it. Round-robin ignores priority and task size; it will delay a high-priority ProjectAlpha task because ProjectBeta already ran once this cycle. That is worse behavior than what we have now.
 
-The right solution is a weekly budget cap per project in `config.json`: `"Athena": 0.25` means Athena gets at most 25% of weekly quota. The scheduler checks `getWeeklyUsageByProject(project)` before dispatching. If Athena is over its cap, `pickNextExcluding` skips it. This is a 30-line change to `scheduler.ts` and `quota.ts` once the DB column exists.
+The right solution is a weekly budget cap per project in `config.json`: `"ProjectBeta": 0.25` means ProjectBeta gets at most 25% of weekly quota. The scheduler checks `getWeeklyUsageByProject(project)` before dispatching. If ProjectBeta is over its cap, `pickNextExcluding` skips it. This is a 30-line change to `scheduler.ts` and `quota.ts` once the DB column exists.
 
-This directly solves Henry's pain. Ship it this week.
+This directly solves the maintainer's pain. Ship it this week.
 
 ### 3. Enhanced Daily Digest (item #4)
 
-The current `sendDailyDigest` in `notify.ts` sends three numbers: completed count, failed count, quota utilization. That is nearly useless for diagnosing the Athena problem. Henry is checking Discord and seeing "68%" with no idea which project burned it.
+The current `sendDailyDigest` in `notify.ts` sends three numbers: completed count, failed count, quota utilization. That is nearly useless for diagnosing the ProjectBeta problem. the maintainer is checking Discord and seeing "68%" with no idea which project burned it.
 
-Add per-project breakdown to the embed: a field per project showing tasks run and tokens consumed that week. This is pure presentation work on top of the DB query that item #2 enables. Cost: 3 hours. This closes the feedback loop - Henry will see the problem in his notifications instead of discovering it when it is too late.
+Add per-project breakdown to the embed: a field per project showing tasks run and tokens consumed that week. This is pure presentation work on top of the DB query that item #2 enables. Cost: 3 hours. This closes the feedback loop - the user will see the problem in his notifications instead of discovering it when it is too late.
 
 ---
 
@@ -53,7 +53,7 @@ We have 133 tests but I can see from the code that `Scheduler` takes injected de
 
 ### 6. Weekly GC Scan (item #11)
 
-Once Athena is budget-capped and the digest shows per-project data, the natural next question is "what tasks are stale?" A weekly scan that flags tasks sitting in `queued` for more than N days and pings Discord is a cron job on top of existing infrastructure. It closes the loop on task hygiene without requiring a dashboard. Week 2.
+Once ProjectBeta is budget-capped and the digest shows per-project data, the natural next question is "what tasks are stale?" A weekly scan that flags tasks sitting in `queued` for more than N days and pings Discord is a cron job on top of existing infrastructure. It closes the loop on task hygiene without requiring a dashboard. Week 2.
 
 ---
 
@@ -65,7 +65,7 @@ This is pure speculation. There is one CLI: `claude`. There is no second CLI imm
 
 ### Web Dashboard (item #5)
 
-This is the classic "wouldn't it be nice" feature that adds a React frontend, a local HTTP server, a build step, and a deployment concern to a daemon that currently has zero runtime dependencies beyond SQLite and better-sqlite3. The existing Discord digest is the dashboard. If the digest is improved (item #4), this is redundant for 90% of use cases. The 10% case where you want to drag-and-drop task priority is not worth the maintenance surface. Drop it. Revisit if Henry explicitly says "I need a UI."
+This is the classic "wouldn't it be nice" feature that adds a React frontend, a local HTTP server, a build step, and a deployment concern to a daemon that currently has zero runtime dependencies beyond SQLite and better-sqlite3. The existing Discord digest is the dashboard. If the digest is improved (item #4), this is redundant for 90% of use cases. The 10% case where you want to drag-and-drop task priority is not worth the maintenance surface. Drop it. Revisit if the user explicitly says "I need a UI."
 
 ### Task Dependencies (item #7)
 
@@ -85,15 +85,15 @@ Auto-decomposing tasks sounds powerful. It is also a research project. The decom
 
 ### Per-Run Cost Logging to Discord
 
-Right now `taskCompleted` in `notify.ts` posts tokens and duration but not cost. Henry is a Claude Max 5x subscriber - actual dollar cost is not directly visible, but relative cost (tokens vs. project budget cap) is. The notification should say "Athena: 47k tokens (83% of weekly cap)" not just "47000." This is a one-line change that makes the problem visible in real time, not just in digests.
+Right now `taskCompleted` in `notify.ts` posts tokens and duration but not cost. the maintainer is a Claude Max 5x subscriber - actual dollar cost is not directly visible, but relative cost (tokens vs. project budget cap) is. The notification should say "ProjectBeta: 47k tokens (83% of weekly cap)" not just "47000." This is a one-line change that makes the problem visible in real time, not just in digests.
 
 ### Task Age / Staleness in `list` Command
 
-The CLI `list` command currently shows status and description. It does not show how long a task has been sitting in `queued`. A task queued for 6 days is almost certainly stale or the project's quota cap is preventing it. Surface `created_at` age in the list output so Henry can identify and cull stale work without waiting for the GC scan.
+The CLI `list` command currently shows status and description. It does not show how long a task has been sitting in `queued`. A task queued for 6 days is almost certainly stale or the project's quota cap is preventing it. Surface `created_at` age in the list output so the user can identify and cull stale work without waiting for the GC scan.
 
 ### Quota Reserve for Manual Use
 
-The scheduler already stops at 90% weekly. But there is no way to set this threshold per-session. Some weeks Henry might want to run manual tasks heavily; other weeks he wants the daemon to run freely. A `--reserve-pct` flag or a config field `manual_reserve_percent` would let him tune this without editing source code.
+The scheduler already stops at 90% weekly. But there is no way to set this threshold per-session. Some weeks the user might want to run manual tasks heavily; other weeks he wants the daemon to run freely. A `--reserve-pct` flag or a config field `manual_reserve_percent` would let him tune this without editing source code.
 
 ---
 
@@ -107,9 +107,9 @@ Yes - but the framing matters. "Per-project budget" sounds like a complex featur
 4. Add cap check in `doTick()` before dispatch (30 minutes)
 5. Show per-project usage in daily digest (1 hour)
 
-Total: half a day. This is not a "feature" - it is a configuration knob backed by a query. The reason to do it this week is that Henry's quota problem is active right now, and every week without it is another week where Athena can go unchecked.
+Total: half a day. This is not a "feature" - it is a configuration knob backed by a query. The reason to do it this week is that the maintainer's quota problem is active right now, and every week without it is another week where ProjectBeta can go unchecked.
 
-The simpler alternative - just manually lower Athena's task priority to `low` - is not simpler. It requires Henry to remember to do it, it does not adapt to actual consumption, and it punishes Athena globally instead of enforcing a weekly cap. The budget cap is the right solution and it is not expensive to build.
+The simpler alternative - just manually lower ProjectBeta's task priority to `low` - is not simpler. It requires the user to remember to do it, it does not adapt to actual consumption, and it punishes ProjectBeta globally instead of enforcing a weekly cap. The budget cap is the right solution and it is not expensive to build.
 
 ---
 
@@ -124,7 +124,7 @@ The simpler alternative - just manually lower Athena's task priority to `low` - 
 | #10 Architecture boundary tests | DO IT | Week 2 |
 | #11 Weekly GC scan | DO IT | Week 2 |
 | #1 Agent adapter pattern | DROP | Never (YAGNI) |
-| #5 Web dashboard | DROP | Only if Henry explicitly asks |
+| #5 Web dashboard | DROP | Only if the user explicitly asks |
 | #7 Task dependencies | DROP | Only if a real case emerges |
 | #8 Client-server architecture | DROP | Never |
 | #9 Sub-agent orchestration | DROP | Research project, not a feature |

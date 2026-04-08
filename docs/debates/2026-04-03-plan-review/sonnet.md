@@ -19,7 +19,7 @@ TypeScript + better-sqlite3 + vitest is a solid, boring stack. `better-sqlite3` 
 The wart is the launchd plist at `com.zylo.quotaflow.plist` which hardcodes a specific nvm Node path:
 
 ```xml
-<string>/Users/zion/.nvm/versions/node/v24.14.0/bin/npx</string>
+<string>~/.nvm/versions/node/v24.14.0/bin/npx</string>
 ```
 
 This breaks silently when Node is upgraded via nvm. The path changes, launchd keeps restarting with the old binary, and the daemon logs nothing useful because the process never reaches the logger. The fix is to use a wrapper shell script that sources nvm before invoking tsx. This is a production reliability issue on day one, not a nice-to-have.

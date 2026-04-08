@@ -61,7 +61,7 @@ Updated: 2026-04-07 (post roadmap-priority debate)
 ### When codebase exceeds 30 files
 - [ ] Architecture boundary tests
 
-### When Henry explicitly asks
+### When the user explicitly asks
 - [ ] Web dashboard
 - [ ] Multi-subscription support
 

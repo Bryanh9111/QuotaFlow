@@ -1,6 +1,6 @@
 # Gemini - The Systems Architect
 
-From a systems architecture perspective, QuotaFlow is at a critical juncture. We've moved from basic dispatcher to quota-aware daemon, but the "Athena incident" — where a single project consumed 68% of the weekly quota — exposes a lack of **resource isolation**. We must shift focus from execution to **governance**.
+From a systems architecture perspective, QuotaFlow is at a critical juncture. We've moved from basic dispatcher to quota-aware daemon, but the "ProjectBeta incident" — where a single project consumed 68% of the weekly quota — exposes a lack of **resource isolation**. We must shift focus from execution to **governance**.
 
 ### Top 3 for THIS WEEK
 
@@ -28,4 +28,4 @@ From a systems architecture perspective, QuotaFlow is at a critical juncture. We
 
 Static per-project percentages are brittle — they lead to stranded capacity where one project's unused quota can't be leveraged by another.
 
-The cleaner model is **Weighted Fair Queuing (WFQ)**. Assign weights to projects (Athena: 1, SideProject: 0.2). Scheduler allocates dynamically. If only one project has tasks, it gets 100%. If both have tasks, throttled by weight ratio. Maximum utility of quota while maintaining isolation.
+The cleaner model is **Weighted Fair Queuing (WFQ)**. Assign weights to projects (ProjectBeta: 1, SideProject: 0.2). Scheduler allocates dynamically. If only one project has tasks, it gets 100%. If both have tasks, throttled by weight ratio. Maximum utility of quota while maintaining isolation.

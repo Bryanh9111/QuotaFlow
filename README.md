@@ -64,10 +64,10 @@ cd ~/Repos/QuotaFlow
 
 # Manual task
 npx tsx src/index.ts add "Review auth module for security issues" \
-  --project Relay --priority high --size medium
+  --project MyWebApp --priority high --size medium
 
 # From template
-npx tsx src/index.ts template review --project Athena
+npx tsx src/index.ts template review --project MyApiServer
 npx tsx src/index.ts templates  # list available templates
 ```
 
@@ -94,14 +94,21 @@ nohup npx tsx src/index.ts > /dev/null 2>&1 &
 ### Install as macOS launchd service (auto-start)
 
 ```bash
-cp com.zylo.quotaflow.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.zylo.quotaflow.plist
+# 1. Copy the template and substitute paths
+sed \
+  -e "s|{HOME}|$HOME|g" \
+  -e "s|{QUOTAFLOW_DIR}|$(pwd)|g" \
+  examples/quotaflow.plist.template \
+  > ~/Library/LaunchAgents/com.quotaflow.daemon.plist
+
+# 2. Load
+launchctl load ~/Library/LaunchAgents/com.quotaflow.daemon.plist
 
 # Check status
 launchctl list | grep quotaflow
 
 # Stop
-launchctl unload ~/Library/LaunchAgents/com.zylo.quotaflow.plist
+launchctl unload ~/Library/LaunchAgents/com.quotaflow.daemon.plist
 ```
 
 ## Agent Integration Guide

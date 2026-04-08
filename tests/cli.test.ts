@@ -45,8 +45,8 @@ beforeEach(() => {
   if (existsSync(BASE_DIR)) rmSync(BASE_DIR, { recursive: true });
   mkdirSync(BASE_DIR, { recursive: true });
   mkdirSync(PROJECTS_DIR, { recursive: true });
-  mkdirSync(join(PROJECTS_DIR, "Relay"), { recursive: true });
-  mkdirSync(join(PROJECTS_DIR, "Athena"), { recursive: true });
+  mkdirSync(join(PROJECTS_DIR, "ProjectAlpha"), { recursive: true });
+  mkdirSync(join(PROJECTS_DIR, "ProjectBeta"), { recursive: true });
 });
 
 // ---- parseArgs ----
@@ -56,7 +56,7 @@ describe("parseArgs", () => {
       "add",
       "Add validation to webhook",
       "--project",
-      "Relay",
+      "ProjectAlpha",
       "--priority",
       "high",
       "--size",
@@ -64,7 +64,7 @@ describe("parseArgs", () => {
     ]);
     expect(result.command).toBe("add");
     expect(result.args[0]).toBe("Add validation to webhook");
-    expect(result.flags["project"]).toBe("Relay");
+    expect(result.flags["project"]).toBe("ProjectAlpha");
     expect(result.flags["priority"]).toBe("high");
     expect(result.flags["size"]).toBe("medium");
   });
@@ -99,13 +99,13 @@ describe("runAdd", () => {
   it("creates task and returns success message", () => {
     const queue = makeQueue();
     const msg = runAdd(queue, ["Add validation to webhook"], {
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "medium",
     });
     expect(msg).toMatch(/Task added/);
     expect(msg).toMatch(/high/);
-    expect(msg).toMatch(/Relay/);
+    expect(msg).toMatch(/ProjectAlpha/);
     expect(msg).toMatch(/Add validation to webhook/);
 
     const tasks = queue.getAll();
@@ -115,7 +115,7 @@ describe("runAdd", () => {
 
   it("defaults priority and size to medium", () => {
     const queue = makeQueue();
-    const msg = runAdd(queue, ["Simple task"], { project: "Relay" });
+    const msg = runAdd(queue, ["Simple task"], { project: "ProjectAlpha" });
     expect(msg).toMatch(/medium/);
     const tasks = queue.getAll();
     expect(tasks[0].priority).toBe("medium");
@@ -124,7 +124,7 @@ describe("runAdd", () => {
 
   it("rejects missing description", () => {
     const queue = makeQueue();
-    expect(() => runAdd(queue, [], { project: "Relay" })).toThrow(
+    expect(() => runAdd(queue, [], { project: "ProjectAlpha" })).toThrow(
       /description/
     );
   });
@@ -148,7 +148,7 @@ describe("runList", () => {
     const queue = makeQueue();
     queue.addTask({
       description: "Add validation to webhook",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "medium",
     });
@@ -156,7 +156,7 @@ describe("runList", () => {
     const output = runList(queue);
     expect(output).toMatch(/QUEUED/);
     expect(output).toMatch(/high/);
-    expect(output).toMatch(/Relay/);
+    expect(output).toMatch(/ProjectAlpha/);
     expect(output).toMatch(/Add validation to webhook/);
   });
 
@@ -164,13 +164,13 @@ describe("runList", () => {
     const queue = makeQueue();
     const t1 = queue.addTask({
       description: "Task one",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "small",
     });
     queue.addTask({
       description: "Task two",
-      project: "Athena",
+      project: "ProjectBeta",
       priority: "low",
       size: "small",
     });
@@ -189,7 +189,7 @@ describe("runRemove", () => {
     const queue = makeQueue();
     const task = queue.addTask({
       description: "To be removed",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "medium",
       size: "small",
     });
@@ -228,7 +228,7 @@ describe("runStatus", () => {
     const queue = makeQueue();
     queue.addTask({
       description: "Pending work",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "small",
     });
@@ -265,7 +265,7 @@ describe("runCli", () => {
     const queue = makeQueue();
     const quota = makeQuotaMock();
     const output = runCli(
-      ["add", "My task", "--project", "Relay", "--priority", "low", "--size", "small"],
+      ["add", "My task", "--project", "ProjectAlpha", "--priority", "low", "--size", "small"],
       queue,
       quota
     );
@@ -278,7 +278,7 @@ describe("runCli", () => {
     const quota = makeQuotaMock();
     const task = queue.addTask({
       description: "Removable",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "medium",
       size: "small",
     });

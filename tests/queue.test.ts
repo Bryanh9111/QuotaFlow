@@ -21,8 +21,8 @@ beforeEach(() => {
   mkdirSync(PROJECTS_DIR, { recursive: true });
 
   // Create fake project directories
-  mkdirSync(join(PROJECTS_DIR, "Relay"), { recursive: true });
-  mkdirSync(join(PROJECTS_DIR, "Athena"), { recursive: true });
+  mkdirSync(join(PROJECTS_DIR, "ProjectAlpha"), { recursive: true });
+  mkdirSync(join(PROJECTS_DIR, "ProjectBeta"), { recursive: true });
 });
 
 describe("TaskQueueManager", () => {
@@ -36,14 +36,14 @@ describe("TaskQueueManager", () => {
     const mgr = makeManager();
     const task = mgr.addTask({
       description: "Build feature X",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "medium",
       size: "small",
     });
 
     expect(task.id).toHaveLength(8);
     expect(task.status).toBe("queued");
-    expect(task.project).toBe("Relay");
+    expect(task.project).toBe("ProjectAlpha");
 
     const all = mgr.getAll();
     expect(all).toHaveLength(1);
@@ -52,9 +52,9 @@ describe("TaskQueueManager", () => {
 
   it("sorts queued tasks by priority: high > medium > low", () => {
     const mgr = makeManager();
-    mgr.addTask({ description: "Low task", project: "Relay", priority: "low", size: "small" });
-    mgr.addTask({ description: "High task", project: "Relay", priority: "high", size: "small" });
-    mgr.addTask({ description: "Medium task", project: "Relay", priority: "medium", size: "small" });
+    mgr.addTask({ description: "Low task", project: "ProjectAlpha", priority: "low", size: "small" });
+    mgr.addTask({ description: "High task", project: "ProjectAlpha", priority: "high", size: "small" });
+    mgr.addTask({ description: "Medium task", project: "ProjectAlpha", priority: "medium", size: "small" });
 
     const queued = mgr.getQueued();
     expect(queued[0].priority).toBe("high");
@@ -66,7 +66,7 @@ describe("TaskQueueManager", () => {
     const mgr = makeManager();
     const task = mgr.addTask({
       description: "Update me",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "low",
       size: "small",
     });
@@ -80,7 +80,7 @@ describe("TaskQueueManager", () => {
     const mgr = makeManager();
     const task = mgr.addTask({
       description: "Complete me",
-      project: "Athena",
+      project: "ProjectBeta",
       priority: "high",
       size: "medium",
     });
@@ -102,7 +102,7 @@ describe("TaskQueueManager", () => {
     const mgr = makeManager();
     const task = mgr.addTask({
       description: "Fail me",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "medium",
       size: "small",
     });
@@ -127,9 +127,9 @@ describe("TaskQueueManager", () => {
   it("pickNext returns highest-priority task within token budget", () => {
     const mgr = makeManager();
     // small=15K, medium=60K, large=200K, xlarge=800K
-    mgr.addTask({ description: "Big task", project: "Relay", priority: "high", size: "large" });
-    mgr.addTask({ description: "Med task", project: "Relay", priority: "medium", size: "medium" });
-    mgr.addTask({ description: "Sm task", project: "Relay", priority: "low", size: "small" });
+    mgr.addTask({ description: "Big task", project: "ProjectAlpha", priority: "high", size: "large" });
+    mgr.addTask({ description: "Med task", project: "ProjectAlpha", priority: "medium", size: "medium" });
+    mgr.addTask({ description: "Sm task", project: "ProjectAlpha", priority: "low", size: "small" });
 
     // Only 70K available: large (200K) won't fit, medium (60K) fits
     const next = mgr.pickNext(70000);
@@ -140,7 +140,7 @@ describe("TaskQueueManager", () => {
 
   it("pickNext returns null when no task fits within token budget", () => {
     const mgr = makeManager();
-    mgr.addTask({ description: "Large task", project: "Relay", priority: "high", size: "large" });
+    mgr.addTask({ description: "Large task", project: "ProjectAlpha", priority: "high", size: "large" });
 
     const next = mgr.pickNext(5000); // less than small (15K)
     expect(next).toBeNull();
@@ -155,7 +155,7 @@ describe("TaskQueueManager", () => {
     const mgr1 = makeManager();
     const task = mgr1.addTask({
       description: "Persistent task",
-      project: "Athena",
+      project: "ProjectBeta",
       priority: "high",
       size: "small",
     });
@@ -169,9 +169,9 @@ describe("TaskQueueManager", () => {
 
   it("recoverRunningTasks resets stuck running tasks to queued", () => {
     const mgr = makeManager();
-    const t1 = mgr.addTask({ description: "Task 1", project: "Relay", priority: "high", size: "small" });
-    const t2 = mgr.addTask({ description: "Task 2", project: "Relay", priority: "medium", size: "small" });
-    const t3 = mgr.addTask({ description: "Task 3", project: "Relay", priority: "low", size: "small" });
+    const t1 = mgr.addTask({ description: "Task 1", project: "ProjectAlpha", priority: "high", size: "small" });
+    const t2 = mgr.addTask({ description: "Task 2", project: "ProjectAlpha", priority: "medium", size: "small" });
+    const t3 = mgr.addTask({ description: "Task 3", project: "ProjectAlpha", priority: "low", size: "small" });
 
     // Simulate two tasks stuck in running state
     mgr.updateTask(t1.id, { status: "running" });
@@ -191,13 +191,13 @@ describe("TaskQueueManager", () => {
 
   it("recoverRunningTasks returns 0 when no stuck tasks", () => {
     const mgr = makeManager();
-    mgr.addTask({ description: "Clean task", project: "Relay", priority: "high", size: "small" });
+    mgr.addTask({ description: "Clean task", project: "ProjectAlpha", priority: "high", size: "small" });
     expect(mgr.recoverRunningTasks()).toBe(0);
   });
 
   it("pickNext skips non-queued tasks", () => {
     const mgr = makeManager();
-    const t = mgr.addTask({ description: "Running task", project: "Relay", priority: "high", size: "small" });
+    const t = mgr.addTask({ description: "Running task", project: "ProjectAlpha", priority: "high", size: "small" });
     mgr.updateTask(t.id, { status: "running" });
 
     expect(mgr.pickNext(100000)).toBeNull();
@@ -205,21 +205,21 @@ describe("TaskQueueManager", () => {
 
   it("pickNextExcluding skips tasks for excluded projects", () => {
     const mgr = makeManager();
-    mgr.addTask({ description: "Relay task", project: "Relay", priority: "high", size: "small" });
-    mgr.addTask({ description: "Athena task", project: "Athena", priority: "medium", size: "small" });
+    mgr.addTask({ description: "ProjectAlpha task", project: "ProjectAlpha", priority: "high", size: "small" });
+    mgr.addTask({ description: "ProjectBeta task", project: "ProjectBeta", priority: "medium", size: "small" });
 
-    // Excluding Relay should skip the high-priority Relay task and return the Athena task
-    const next = mgr.pickNextExcluding(100000, ["Relay"]);
+    // Excluding ProjectAlpha should skip the high-priority ProjectAlpha task and return the ProjectBeta task
+    const next = mgr.pickNextExcluding(100000, ["ProjectAlpha"]);
     expect(next).not.toBeNull();
-    expect(next!.project).toBe("Athena");
+    expect(next!.project).toBe("ProjectBeta");
 
     // Excluding both should return null
-    const none = mgr.pickNextExcluding(100000, ["Relay", "Athena"]);
+    const none = mgr.pickNextExcluding(100000, ["ProjectAlpha", "ProjectBeta"]);
     expect(none).toBeNull();
 
-    // Excluding nothing should return the highest-priority task (Relay/high)
+    // Excluding nothing should return the highest-priority task (ProjectAlpha/high)
     const unrestricted = mgr.pickNextExcluding(100000, []);
     expect(unrestricted).not.toBeNull();
-    expect(unrestricted!.project).toBe("Relay");
+    expect(unrestricted!.project).toBe("ProjectAlpha");
   });
 });

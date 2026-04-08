@@ -11,7 +11,7 @@ Both **Opus** and **Codex** argued against #6 per-project budget, which was Sonn
 
 > **The 908K token task falsified the sizing model.** `SIZE_TOKEN_ESTIMATES.large = 60000` was off by 15x. Before adding policy (budgets), we need accurate units. Budgets on top of bad sizing is "false precision" (Codex) or "building on sand" (Sonnet's own words, applied differently).
 
-Codex went further: **"budgets substitute fairness theater for value"** — they invite gaming, create arbitrary envelopes, and punish high-value work. If Athena is the highest-value project, it SHOULD be allowed to consume most of the week. The fix is stricter task scoping + kill switches, not percentages.
+Codex went further: **"budgets substitute fairness theater for value"** — they invite gaming, create arbitrary envelopes, and punish high-value work. If ProjectBeta is the highest-value project, it SHOULD be allowed to consume most of the week. The fix is stricter task scoping + kill switches, not percentages.
 
 ---
 
@@ -32,7 +32,7 @@ Codex qualifies: "as minimal instrumentation, not a new subsystem." Opus emphasi
 
 ### #4 Enhanced Daily Digest (Unanimous 4/4)
 
-Current digest shows 3 numbers (completed/failed/utilization). All four agree it's nearly useless for diagnosing the Athena problem. With #2 in place, per-project breakdown is a GROUP BY query.
+Current digest shows 3 numbers (completed/failed/utilization). All four agree it's nearly useless for diagnosing the ProjectBeta problem. With #2 in place, per-project breakdown is a GROUP BY query.
 
 **Implementation: 1 hour**
 - Query usage by project for the week
@@ -66,7 +66,7 @@ This reframes AGENTS.md from "nice documentation" to **"scope control mechanism.
 
 | Debater | Position |
 |---------|----------|
-| **Sonnet** | DO IT — 30-line change, solves Athena problem directly |
+| **Sonnet** | DO IT — 30-line change, solves ProjectBeta problem directly |
 | **Gemini** | Reframe as Weighted Fair Queuing (dynamic allocation) |
 | **Opus** | Do it AFTER calibration data — 2 weeks of measurement first |
 | **Codex** | DROP — "fairness theater", invites gaming, budgets on broken units |
@@ -101,7 +101,7 @@ This reframes AGENTS.md from "nice documentation" to **"scope control mechanism.
 
 1. **Add `project` column to `usage_log`** (30 min) — Sonnet unanimously supported
 2. **Fix estimator to learn from history** (30 min) — `recordUsage` must include `task_size` so `estimateTokens` can actually calibrate. Currently it stores size but the self-recording path doesn't use it correctly (Codex found this bug)
-3. **Enhanced digest with per-project breakdown + outlier detection** (1 hour) — show "Athena: 908K tokens (94% of week)" and flag estimate vs actual mismatches
+3. **Enhanced digest with per-project breakdown + outlier detection** (1 hour) — show "ProjectBeta: 908K tokens (94% of week)" and flag estimate vs actual mismatches
 4. **AGENTS.md as task scope control** (1 hour) — write prompt prefix that forces decomposition, stop conditions, smaller deliverables. Inject into every `claude -p` invocation.
 5. **Add `xlarge` task size tier** (15 min) — real data shows 60K `large` is wrong for planning tasks
 

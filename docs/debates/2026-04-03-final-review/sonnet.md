@@ -44,7 +44,7 @@ await execAsync(`git branch -D ${branchName}`, ...)
 `executor.ts` lines 118-130: If the Claude CLI JSON output does not have `usage.input_tokens`/`usage.output_tokens` OR `tokens_used` at the top level, the code falls back to `Math.floor(stdout.length / 4)`. This will produce wildly wrong numbers for all quota tracking if the CLI output format differs from what's expected. Given the PRD notes "Claude CLI output format changes" as a medium-probability risk, this silent fallback will corrupt quota estimates without any warning logged.
 
 ### Bug 3: `runStatus` in `cli.ts` computes misleading token display
-`cli.ts` lines 134-153: `displayTotal = available + weekly.total_tokens`. This adds the current window's remaining tokens to the last 7 days of total usage - these are completely different things. The display reads "79,200 / 124,200" which is nonsensical. The correct total for the current 5-hour window is `tokens_per_5h_window * (1 - buffer/100)` = 79,200. The `runStatus` function cannot access config directly (it's not passed in), so it approximates - but the approximation is wrong and will confuse Henry.
+`cli.ts` lines 134-153: `displayTotal = available + weekly.total_tokens`. This adds the current window's remaining tokens to the last 7 days of total usage - these are completely different things. The display reads "79,200 / 124,200" which is nonsensical. The correct total for the current 5-hour window is `tokens_per_5h_window * (1 - buffer/100)` = 79,200. The `runStatus` function cannot access config directly (it's not passed in), so it approximates - but the approximation is wrong and will confuse the user.
 
 ### Bug 4: Weekly quota check uses a nonsensical conversion formula
 `scheduler.ts` line 91:
@@ -67,15 +67,15 @@ const weeklyLimitTokens = config.quota.weekly_compute_hours * 3600 * 10;
 The `scripts/start-daemon.sh` and `com.zylo.quotaflow.plist` are present, but there is no documented step to:
 1. Copy config from `examples/config.json` to `~/.quotaflow/config.json`
 2. Load the launchd plist: `launchctl load ~/Library/LaunchAgents/com.zylo.quotaflow.plist`
-3. The plist lives in the repo root, not in `~/Library/LaunchAgents/` where launchd expects it. Henry must copy or symlink it there manually - this is not documented.
+3. The plist lives in the repo root, not in `~/Library/LaunchAgents/` where launchd expects it. the user must copy or symlink it there manually - this is not documented.
 
 ### Blocker 2: `npx tsx` in the daemon script will be slow and fragile
 `start-daemon.sh` uses `exec npx tsx src/index.ts`. `npx` resolves and downloads packages on first run if not cached. In a launchd context with limited PATH, this may fail silently. More critically, `tsx` is a dev dependency - there is no compiled output. The daemon requires the full dev toolchain to run. A compiled `dist/` would be safer for production use, but no build step exists.
 
 ### Blocker 3: `discord_webhook_url` is empty by default; no validation at startup
-`DEFAULT_CONFIG` has `discord_webhook_url: ""`. The `Notifier` silently no-ops when the URL is empty (correct behavior). However, `validateConfig` does not warn or log that notifications are disabled. Henry running the daemon for the first time with no webhook will get no feedback that tasks completed - the only output is local log files, which requires him to know to look in `~/.quotaflow/logs/`. There is no startup message printed to stdout confirming the webhook status clearly enough to catch a misconfiguration.
+`DEFAULT_CONFIG` has `discord_webhook_url: ""`. The `Notifier` silently no-ops when the URL is empty (correct behavior). However, `validateConfig` does not warn or log that notifications are disabled. the user running the daemon for the first time with no webhook will get no feedback that tasks completed - the only output is local log files, which requires him to know to look in `~/.quotaflow/logs/`. There is no startup message printed to stdout confirming the webhook status clearly enough to catch a misconfiguration.
 
-Actually, `index.ts` line 69 does log `webhook: config.discord_webhook_url ? "configured" : "not configured"` - but only to the log file, not stdout. Since `start-daemon.sh` uses `exec`, stdout goes to `~/.quotaflow/logs/daemon-stdout.log`, so Henry can check it, but it's not obvious.
+Actually, `index.ts` line 69 does log `webhook: config.discord_webhook_url ? "configured" : "not configured"` - but only to the log file, not stdout. Since `start-daemon.sh` uses `exec`, stdout goes to `~/.quotaflow/logs/daemon-stdout.log`, so the user can check it, but it's not obvious.
 
 ### Blocker 4: No handling of `claude` CLI not being in PATH for the launchd context
 The plist does not set `PATH`. `start-daemon.sh` sources nvm to get Node, but `claude` (Claude Code CLI) must also be in PATH. If `claude` is installed via a different mechanism (e.g., into `~/.local/bin` or a Homebrew path), it may not be available in the launchd subprocess environment. The executor will fail every task with "command not found" and mark them all failed, with no clear error message that this is a PATH issue.
@@ -84,4 +84,4 @@ The plist does not set `PATH`. `start-daemon.sh` sources nvm to get Node, but `c
 `scheduler.ts` lines 103-141: In the concurrency loop, `quota.getAvailableTokens()` is called for each slot, but usage is only recorded *after all tasks complete* (line 192). If two tasks are dispatched concurrently, each sees the same available token count. Two medium tasks (30K tokens each) could both be dispatched when only 35K tokens are actually available for the window. The quota accounting is correct after the fact, but the dispatch decision is wrong: it can over-commit tokens within a single tick.
 
 ### Blocker 6: No `safe` flag filtering despite being specified in the PRD
-The PRD specifies tasks have a `safe` flag. The example `tasks.json` does not include it. There is no code anywhere that checks `task.safe`. Henry cannot mark a task as unsafe to prevent automatic execution - every queued task will be dispatched. This means if Henry adds an exploratory/destructive task to the queue (e.g., "Delete all test data and regenerate"), it will run automatically at night with no safeguard.
+The PRD specifies tasks have a `safe` flag. The example `tasks.json` does not include it. There is no code anywhere that checks `task.safe`. the user cannot mark a task as unsafe to prevent automatic execution - every queued task will be dispatched. This means if the user adds an exploratory/destructive task to the queue (e.g., "Delete all test data and regenerate"), it will run automatically at night with no safeguard.

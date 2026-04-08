@@ -60,7 +60,7 @@ All participants flagged this as a reliability issue. A Node version upgrade sil
 
 4. **Fix launchd plist** - Use a wrapper script that sources nvm instead of hardcoding the Node path. (All 4)
 
-5. **Add CLAUDE.md** - Henry explicitly requested this. (Opus)
+5. **Add CLAUDE.md** - the user explicitly requested this. (Opus)
 
 ### Should Fix (P1)
 

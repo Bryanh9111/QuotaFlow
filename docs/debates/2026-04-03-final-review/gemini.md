@@ -17,4 +17,4 @@
 
 - **Token usage extraction unreliable:** Without confirmed JSON output from claude CLI, quota tracking is speculative.
 - **Zombie branches from failed tasks:** If claude leaves untracked files, subsequent tasks for that project fail the dirty-directory check.
-- **Hardcoded default path:** DEFAULT_CONFIG points to /Users/zion/Repos/Zylo, no setup wizard.
+- **Hardcoded default path:** DEFAULT_CONFIG points to /path/to/workspace, no setup wizard.

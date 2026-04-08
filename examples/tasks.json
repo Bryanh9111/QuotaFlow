@@ -3,7 +3,7 @@
     {
       "id": "001",
       "description": "Add input validation to /api/webhook endpoint",
-      "project": "Relay",
+      "project": "MyWebApp",
       "priority": "high",
       "size": "medium",
       "status": "queued",
@@ -12,7 +12,7 @@
     {
       "id": "002",
       "description": "Write unit tests for auth middleware",
-      "project": "Athena",
+      "project": "MyApiServer",
       "priority": "medium",
       "size": "small",
       "status": "queued",

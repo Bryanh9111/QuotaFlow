@@ -52,7 +52,7 @@ QuotaFlow/
 - [ ] **Step 1: Initialize package.json**
 
 ```bash
-cd /Users/zion/Repos/Zylo/QuotaFlow
+cd /path/to/workspace/QuotaFlow
 npm init -y
 ```
 
@@ -189,7 +189,7 @@ export interface ExecutionResult {
 }
 
 export const DEFAULT_CONFIG: Config = {
-  projects_root: "/Users/zion/Repos/Zylo",
+  projects_root: "/path/to/workspace",
   inactivity_threshold_minutes: 15,
   check_interval_minutes: 5,
   max_concurrency: 1,
@@ -406,8 +406,8 @@ let queue: TaskQueueManager;
 beforeEach(() => {
   mkdirSync(TEST_DIR, { recursive: true });
   // Create fake project directories for portable tests
-  mkdirSync(join(PROJECTS_DIR, "Relay"), { recursive: true });
-  mkdirSync(join(PROJECTS_DIR, "Athena"), { recursive: true });
+  mkdirSync(join(PROJECTS_DIR, "ProjectAlpha"), { recursive: true });
+  mkdirSync(join(PROJECTS_DIR, "ProjectBeta"), { recursive: true });
   mkdirSync(join(PROJECTS_DIR, "Prism"), { recursive: true });
   queue = new TaskQueueManager(TASKS_FILE, PROJECTS_DIR);
 });
@@ -424,7 +424,7 @@ describe("TaskQueueManager", () => {
   it("loads tasks from file", () => {
     queue.addTask({
       description: "Add validation to webhook",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "medium",
       safe: true,
@@ -437,8 +437,8 @@ describe("TaskQueueManager", () => {
   });
 
   it("returns queued tasks sorted by priority", () => {
-    queue.addTask({ description: "Low task", project: "Relay", priority: "low", size: "small", safe: true });
-    queue.addTask({ description: "High task", project: "Athena", priority: "high", size: "medium", safe: true });
+    queue.addTask({ description: "Low task", project: "ProjectAlpha", priority: "low", size: "small", safe: true });
+    queue.addTask({ description: "High task", project: "ProjectBeta", priority: "high", size: "medium", safe: true });
     queue.addTask({ description: "Med task", project: "Prism", priority: "medium", size: "small", safe: true });
     const tasks = queue.getQueued();
     expect(tasks[0].priority).toBe("high");
@@ -447,14 +447,14 @@ describe("TaskQueueManager", () => {
   });
 
   it("updates task status", () => {
-    queue.addTask({ description: "Test task", project: "Relay", priority: "high", size: "small", safe: true });
+    queue.addTask({ description: "Test task", project: "ProjectAlpha", priority: "high", size: "small", safe: true });
     const task = queue.getQueued()[0];
     queue.updateTask(task.id, { status: "running" });
     expect(queue.getAll().find((t) => t.id === task.id)?.status).toBe("running");
   });
 
   it("completes task with metadata", () => {
-    queue.addTask({ description: "Test task", project: "Relay", priority: "high", size: "small", safe: true });
+    queue.addTask({ description: "Test task", project: "ProjectAlpha", priority: "high", size: "small", safe: true });
     const task = queue.getQueued()[0];
     queue.completeTask(task.id, {
       branch: "quotaflow/task-001",
@@ -468,7 +468,7 @@ describe("TaskQueueManager", () => {
   });
 
   it("fails task with error", () => {
-    queue.addTask({ description: "Test task", project: "Relay", priority: "high", size: "small", safe: true });
+    queue.addTask({ description: "Test task", project: "ProjectAlpha", priority: "high", size: "small", safe: true });
     const task = queue.getQueued()[0];
     queue.failTask(task.id, "timeout exceeded");
     const updated = queue.getAll().find((t) => t.id === task.id);
@@ -489,21 +489,21 @@ describe("TaskQueueManager", () => {
   });
 
   it("picks next task matching size constraint", () => {
-    queue.addTask({ description: "Big task", project: "Relay", priority: "high", size: "large", safe: true });
-    queue.addTask({ description: "Small task", project: "Athena", priority: "medium", size: "small", safe: true });
+    queue.addTask({ description: "Big task", project: "ProjectAlpha", priority: "high", size: "large", safe: true });
+    queue.addTask({ description: "Small task", project: "ProjectBeta", priority: "medium", size: "small", safe: true });
     const next = queue.pickNext(15000);
     expect(next?.description).toBe("Small task");
   });
 
   it("returns null when no task fits quota", () => {
-    queue.addTask({ description: "Big task", project: "Relay", priority: "high", size: "large", safe: true });
+    queue.addTask({ description: "Big task", project: "ProjectAlpha", priority: "high", size: "large", safe: true });
     const next = queue.pickNext(5000);
     expect(next).toBeNull();
   });
 
   it("persists across instances", () => {
-    queue.addTask({ description: "Persist test", project: "Relay", priority: "high", size: "small", safe: true });
-    const queue2 = new TaskQueueManager(TASKS_FILE, "/Users/zion/Repos/Zylo");
+    queue.addTask({ description: "Persist test", project: "ProjectAlpha", priority: "high", size: "small", safe: true });
+    const queue2 = new TaskQueueManager(TASKS_FILE, "/path/to/workspace");
     expect(queue2.getQueued()).toHaveLength(1);
   });
 });
@@ -1099,7 +1099,7 @@ describe("Logger", () => {
   });
 
   it("writes structured log entries", () => {
-    logger.info("task started", { task_id: "abc", project: "Relay" });
+    logger.info("task started", { task_id: "abc", project: "ProjectAlpha" });
     const today = new Date().toISOString().slice(0, 10);
     const content = readFileSync(join(TEST_DIR, `${today}.log`), "utf-8");
     expect(content).toContain("INFO");
@@ -1208,7 +1208,7 @@ describe("Notifier", () => {
     const task: Task = {
       id: "abc",
       description: "Add validation",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "medium",
       safe: true,
@@ -1231,7 +1231,7 @@ describe("Notifier", () => {
     const [url, options] = mockFetch.mock.calls[0];
     expect(url).toBe("https://discord.com/api/webhooks/test/token");
     const body = JSON.parse(options.body);
-    expect(body.embeds[0].title).toContain("Relay");
+    expect(body.embeds[0].title).toContain("ProjectAlpha");
     expect(body.embeds[0].color).toBe(0x00ff00); // green for success
   });
 
@@ -1239,7 +1239,7 @@ describe("Notifier", () => {
     const task: Task = {
       id: "def",
       description: "Broken task",
-      project: "Athena",
+      project: "ProjectBeta",
       priority: "low",
       size: "small",
       safe: true,
@@ -1432,7 +1432,7 @@ describe("TaskExecutor", () => {
     const task: Task = {
       id: "abc123",
       description: "Add input validation to webhook endpoint",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "medium",
       safe: true,
@@ -1448,7 +1448,7 @@ describe("TaskExecutor", () => {
     const task: Task = {
       id: "xyz789",
       description: "This is a very long task description that should be truncated for branch naming purposes",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "medium",
       safe: true,
@@ -1465,18 +1465,18 @@ describe("TaskExecutor", () => {
     const task: Task = {
       id: "abc",
       description: 'Fix the "bug" in auth',
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "small",
       safe: true,
       status: "queued",
       created_at: "2026-04-03T00:00:00Z",
     };
-    const cmd = executor.buildClaudeCommand(task, "/Users/zion/Repos/Zylo/Relay");
+    const cmd = executor.buildClaudeCommand(task, "/path/to/workspace/ProjectAlpha");
     expect(cmd).toContain("claude");
     expect(cmd).toContain("-p");
     expect(cmd).toContain("--cwd");
-    expect(cmd).toContain("/Users/zion/Repos/Zylo/Relay");
+    expect(cmd).toContain("/path/to/workspace/ProjectAlpha");
     // Verify description is properly escaped
     expect(cmd).not.toContain('"bug"');
   });
@@ -1766,7 +1766,7 @@ describe("Scheduler", () => {
     const task: Task = {
       id: "test-1",
       description: "Test task",
-      project: "Relay",
+      project: "ProjectAlpha",
       priority: "high",
       size: "small",
       safe: true,
@@ -1791,7 +1791,7 @@ describe("Scheduler", () => {
     await scheduler.tick();
 
     expect(deps.queue.updateTask).toHaveBeenCalledWith("test-1", { status: "running" });
-    expect(deps.executor.execute).toHaveBeenCalledWith(task, "/Users/zion/Repos/Zylo/Relay");
+    expect(deps.executor.execute).toHaveBeenCalledWith(task, "/path/to/workspace/ProjectAlpha");
     expect(deps.queue.completeTask).toHaveBeenCalledWith("test-1", {
       branch: "quotaflow/task-test-1",
       tokens_used: 8000,
@@ -1806,7 +1806,7 @@ describe("Scheduler", () => {
     const task: Task = {
       id: "fail-1",
       description: "Failing task",
-      project: "Athena",
+      project: "ProjectBeta",
       priority: "high",
       size: "medium",
       safe: true,
@@ -2184,12 +2184,12 @@ main();
   <string>com.zylo.quotaflow</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/zion/.nvm/versions/node/v24.14.0/bin/npx</string>
+    <string>~/.nvm/versions/node/v24.14.0/bin/npx</string>
     <string>tsx</string>
-    <string>/Users/zion/Repos/Zylo/QuotaFlow/src/index.ts</string>
+    <string>/path/to/workspace/QuotaFlow/src/index.ts</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/zion/Repos/Zylo/QuotaFlow</string>
+  <string>/path/to/workspace/QuotaFlow</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -2201,7 +2201,7 @@ main();
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/Users/zion/.nvm/versions/node/v24.14.0/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>~/.nvm/versions/node/v24.14.0/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
 </dict>
 </plist>
@@ -2283,7 +2283,7 @@ git commit -m "chore: verify full test suite passes with >90% coverage"
 
 ```json
 {
-  "projects_root": "/Users/zion/Repos/Zylo",
+  "projects_root": "/path/to/workspace",
   "inactivity_threshold_minutes": 15,
   "check_interval_minutes": 5,
   "max_concurrency": 1,
@@ -2311,7 +2311,7 @@ git commit -m "chore: verify full test suite passes with >90% coverage"
     {
       "id": "001",
       "description": "Add input validation to /api/webhook endpoint",
-      "project": "Relay",
+      "project": "ProjectAlpha",
       "priority": "high",
       "size": "medium",
       "safe": true,
@@ -2321,7 +2321,7 @@ git commit -m "chore: verify full test suite passes with >90% coverage"
     {
       "id": "002",
       "description": "Write unit tests for auth middleware",
-      "project": "Athena",
+      "project": "ProjectBeta",
       "priority": "medium",
       "size": "small",
       "safe": true,

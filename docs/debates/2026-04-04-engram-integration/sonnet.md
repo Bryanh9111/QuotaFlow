@@ -22,7 +22,7 @@ Beyond that, yes - let both systems run independently. QuotaFlow has 129 tests b
 
 ## 3. Biggest risk
 
-**Silent memory poisoning across projects.** QuotaFlow dispatches tasks concurrently across up to N projects. Each `claude -p` subprocess connects to the same Engram instance. Task A on project Relay writes a memory: "deploy pipeline is broken." Task B on project Athena, running in parallel, proactively recalls context about Relay because Engram's associative search finds a weak link between the two. Task B now operates under incorrect assumptions about Athena's state.
+**Silent memory poisoning across projects.** QuotaFlow dispatches tasks concurrently across up to N projects. Each `claude -p` subprocess connects to the same Engram instance. Task A on project ProjectAlpha writes a memory: "deploy pipeline is broken." Task B on project ProjectBeta, running in parallel, proactively recalls context about ProjectAlpha because Engram's associative search finds a weak link between the two. Task B now operates under incorrect assumptions about ProjectBeta's state.
 
 This is not hypothetical. Associative memory systems are designed to surface unexpected connections. That is their value. It is also their attack surface in a multi-project automation context. QuotaFlow's same-project exclusion logic (the `excludeProjects` set in scheduler) prevents concurrent same-project execution, but it does nothing to prevent cross-project memory bleed.
 
@@ -32,7 +32,7 @@ Mitigation: Engram memories written by automated QuotaFlow sessions should be ta
 
 The `pickNextExcluding` function in `queue.ts` already makes routing decisions based on token availability and project exclusion. It is making these decisions blind. If a project has a known blocker - failed CI, merge conflict, broken dependency - QuotaFlow will keep picking tasks for that project, executing them, burning quota, and getting failures that look like claude errors rather than project state errors.
 
-Tier 2's value is not "smarter routing." It is "stop wasting quota on known-broken projects." That is a concrete, measurable benefit available today. The implementation is genuinely small: query Engram for each candidate project before dispatch, check for blockers, skip if found. The output of `execSync("engram search 'project:Relay blocker'")` is either empty or it is not. No complex parsing required.
+Tier 2's value is not "smarter routing." It is "stop wasting quota on known-broken projects." That is a concrete, measurable benefit available today. The implementation is genuinely small: query Engram for each candidate project before dispatch, check for blockers, skip if found. The output of `execSync("engram search 'project:ProjectAlpha blocker'")` is either empty or it is not. No complex parsing required.
 
 The counterargument - "we don't know Engram is reliable yet" - applies equally to every other part of the system. Wrap it in a try/catch with a fallback to "proceed without Engram context." If Engram fails, behavior is identical to today. Risk is zero. Upside is real.
 
@@ -40,6 +40,6 @@ The counterargument - "we don't know Engram is reliable yet" - applies equally t
 
 Tier 3 is the tier that actually matters, and nobody wants to build it because it requires answering an uncomfortable question: *what is a good task result?* Writing raw execution outcomes to Engram is noise. Writing curated, structured summaries requires either human review or a second Claude pass to synthesize results. Neither is in scope.
 
-The real integration path is not QuotaFlow-writes-to-Engram. It is Engram-reads-from-QuotaFlow-logs. Engram should have a scheduled job that ingests the structured SQLite task history, extracts patterns - "project X fails 80% of the time on large tasks", "review tasks for Athena always produce diffs over 200 lines" - and surfaces these as first-class memories. This is an Engram feature, not a QuotaFlow feature. QuotaFlow should never be responsible for the quality of what gets remembered. That concern belongs in the memory system.
+The real integration path is not QuotaFlow-writes-to-Engram. It is Engram-reads-from-QuotaFlow-logs. Engram should have a scheduled job that ingests the structured SQLite task history, extracts patterns - "project X fails 80% of the time on large tasks", "review tasks for ProjectBeta always produce diffs over 200 lines" - and surfaces these as first-class memories. This is an Engram feature, not a QuotaFlow feature. QuotaFlow should never be responsible for the quality of what gets remembered. That concern belongs in the memory system.
 
 Trying to make QuotaFlow "memory-aware" is YAGNI. Make it emit clean, queryable structured data and let Engram own the memory lifecycle.

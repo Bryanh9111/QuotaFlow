@@ -19,7 +19,7 @@ The system manages ~88,000 tokens per 5-hour window and ~140-280 Sonnet compute 
 
 ## Problem Statement
 
-**Current Situation**: A Claude Max 5x subscriber manages 8 active projects under the Zylo workspace. During active hours (roughly 12-16h/day), they run 1-4 concurrent Claude sessions manually. During sleep and away time (~8-12h/day), the 5-hour token windows reset with unused quota -- an estimated 30-50% of total available capacity goes to waste.
+**Current Situation**: A Claude Max 5x subscriber manages 8 active projects under a single workspace. During active hours (roughly 12-16h/day), they run 1-4 concurrent Claude sessions manually. During sleep and away time (~8-12h/day), the 5-hour token windows reset with unused quota -- an estimated 30-50% of total available capacity goes to waste.
 
 **Proposed Solution**: A local 24/7 daemon that detects user inactivity, estimates remaining quota, and automatically dispatches prioritized development tasks from a central queue to Claude Code CLI sessions across all managed projects.
 
@@ -44,7 +44,7 @@ The system manages ~88,000 tokens per 5-hour window and ~140-280 Sonnet compute 
 
 ## User Personas
 
-### Primary: Henry (Solo Developer / Subscriber)
+### Primary: Solo Developer / Subscriber
 - **Role**: Full-stack developer managing multiple projects
 - **Goals**: Maximize development velocity across 8 projects without increasing subscription cost
 - **Pain Points**: Token quota wasted during sleep/away hours; manual context-switching between projects is overhead
@@ -62,7 +62,7 @@ The system manages ~88,000 tokens per 5-hour window and ~140-280 Sonnet compute 
 
 **Acceptance Criteria:**
 - [ ] Tasks defined in a JSON file with fields: description, project path, priority (high/medium/low), estimated size (small/medium/large), safe flag
-- [ ] Tasks can target any project under the Zylo workspace
+- [ ] Tasks can target any project under the configured workspace
 - [ ] Invalid project paths or malformed entries are rejected with clear error messages
 - [ ] Task queue persists across daemon restarts
 
@@ -282,8 +282,8 @@ The system manages ~88,000 tokens per 5-hour window and ~140-280 Sonnet compute 
 - **Feature branch**: Git branch created by QuotaFlow for auto-executed task output
 - **Headless mode**: Claude CLI's non-interactive `--print` mode
 
-### Target Projects (Zylo Workspace)
-- Archetype, Athena, AthenaData, Onyx, PixelTo, Prism, Relay, ZyloApp
+### Target Projects
+- Any subdirectory under `projects_root` in config.json
 
 ### Configuration File Location
 - `~/.quotaflow/config.json` -- daemon settings

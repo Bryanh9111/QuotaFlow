@@ -24,6 +24,6 @@
 
 **Critical: checkDigests crash locks the daemon.** The bug above (scheduler.ts:60) means any Discord webhook timeout or network error in checkDigests will permanently freeze the scheduler. The busy flag never resets. This must be fixed before real use.
 
-**Medium: No ~/.quotaflow directory bootstrapping from CLI.** Running `npx tsx src/index.ts add "task" --project Relay` before the daemon has ever started will fail because `~/.quotaflow/` might not exist and the queue manager tries to write to `~/.quotaflow/tasks.json`. The daemon creates the directory in `main()`, but CLI commands execute before that path.
+**Medium: No ~/.quotaflow directory bootstrapping from CLI.** Running `npx tsx src/index.ts add "task" --project ProjectAlpha` before the daemon has ever started will fail because `~/.quotaflow/` might not exist and the queue manager tries to write to `~/.quotaflow/tasks.json`. The daemon creates the directory in `main()`, but CLI commands execute before that path.
 
-**Low: No validation that `--project` value matches an actual project name.** The queue validates the path exists, but if the user types `--project relay` (lowercase) instead of `--project Relay`, addTask will throw "Project path does not exist" with no suggestion of valid names.
+**Low: No validation that `--project` value matches an actual project name.** The queue validates the path exists, but if the user types `--project relay` (lowercase) instead of `--project ProjectAlpha`, addTask will throw "Project path does not exist" with no suggestion of valid names.

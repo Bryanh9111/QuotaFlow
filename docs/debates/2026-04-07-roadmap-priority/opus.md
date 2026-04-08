@@ -19,7 +19,7 @@ Breaking it down:
 
 **2. Item #2: Execution history DB** - Directly supports calibration. Store every task's estimate vs actual, per-size aggregates, running averages. This was already in the plan (Phase 2 smart estimation from historical data) but unused. Wire it in.
 
-**3. Item #4: Enhanced daily digest** - Show the gap. "You estimated 60K, actual 908K. Recommend re-categorizing 'engineering plans' as XL." Surface the measurement problem to Henry so he can make better task decisions.
+**3. Item #4: Enhanced daily digest** - Show the gap. "You estimated 60K, actual 908K. Recommend re-categorizing 'engineering plans' as XL." Surface the measurement problem to the user so he can make better task decisions.
 
 ### Top 3 for NEAR-TERM roadmap (next 2 weeks, after data collection)
 
@@ -38,13 +38,13 @@ Breaking it down:
 
 ### Missing items I'd add
 
-- **Real-time cost observability** - Daemon should log running token consumption during task execution (from stream-json events), not just final totals. Henry should be able to `tail -f` and see `[task-123] 450K tokens / 45% of budget` live.
+- **Real-time cost observability** - Daemon should log running token consumption during task execution (from stream-json events), not just final totals. the maintainer should be able to `tail -f` and see `[task-123] 450K tokens / 45% of budget` live.
 - **Task kill switch** - If a task is burning more tokens than expected mid-execution, kill it. The 908K outlier could have been caught at 100K if there was a mid-execution budget check.
 - **Weekly-aware task scheduling** - Right now daemon runs any task if quota >= size threshold. It should also consider "how many days until weekly reset" - run large tasks on Friday morning, small tasks late Thursday.
 
 ### Is per-project budget the right priority?
 
-**No.** The root problem isn't "Athena ate the quota." It's "we had no idea Athena tasks cost 900K tokens." A budget caps *total consumption* but doesn't prevent the next surprise (e.g., a Relay task accidentally costing 2M tokens because it read the entire codebase).
+**No.** The root problem isn't "ProjectBeta ate the quota." It's "we had no idea ProjectBeta tasks cost 900K tokens." A budget caps *total consumption* but doesn't prevent the next surprise (e.g., a ProjectAlpha task accidentally costing 2M tokens because it read the entire codebase).
 
 The real fix is **per-task budget ceilings with mid-execution kill** - "this task may consume up to X tokens; if it exceeds, terminate and mark as over-budget." That's harder to implement (requires interrupting stream-json mid-flight) but directly addresses the outlier problem.
 

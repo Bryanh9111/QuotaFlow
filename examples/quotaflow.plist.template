@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  QuotaFlow launchd template.
+
+  Before using:
+  1. Replace {HOME} with your home directory (e.g. /Users/yourname)
+  2. Replace {QUOTAFLOW_DIR} with the absolute path where you cloned QuotaFlow
+  3. Copy to ~/Library/LaunchAgents/com.quotaflow.daemon.plist
+  4. Load: launchctl load ~/Library/LaunchAgents/com.quotaflow.daemon.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.quotaflow.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>{QUOTAFLOW_DIR}/scripts/start-daemon.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{QUOTAFLOW_DIR}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>{HOME}/.quotaflow/logs/daemon-stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>{HOME}/.quotaflow/logs/daemon-stderr.log</string>
+</dict>
+</plist>

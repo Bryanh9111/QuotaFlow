@@ -37,3 +37,8 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local scratch files
+reference.md
+scratch/
+notes.local.md

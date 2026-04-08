@@ -8,5 +8,7 @@ export NVM_DIR="$HOME/.nvm"
 # Ensure claude CLI is on PATH (installed via npm)
 export PATH="$HOME/.nvm/versions/node/$(node -v)/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
 
-cd /Users/zion/Repos/Zylo/QuotaFlow
+# Auto-detect the QuotaFlow directory (directory containing this script's parent)
+QUOTAFLOW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$QUOTAFLOW_DIR"
 exec npx tsx src/index.ts

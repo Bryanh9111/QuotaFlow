@@ -1,6 +1,6 @@
 # QuotaFlow
 
-Local daemon for intelligent Claude Max token quota allocation across multiple Zylo projects.
+Local daemon for intelligent Claude Max token quota allocation across multiple local projects.
 
 ## Architecture
 
@@ -40,11 +40,11 @@ src/
 ## CLI Commands
 
 ```bash
-npx tsx src/index.ts add "task description" --project Relay --priority high --size medium
+npx tsx src/index.ts add "task description" --project MyWebApp --priority high --size medium
 npx tsx src/index.ts list              # Show tasks grouped by status
 npx tsx src/index.ts rm <id>           # Remove task (mark as skipped)
 npx tsx src/index.ts status            # Show quota and queue stats
-npx tsx src/index.ts template review --project Athena  # Create from template
+npx tsx src/index.ts template review --project MyApiServer  # Create from template
 npx tsx src/index.ts templates         # List available templates
 npx tsx src/index.ts --dry-run         # Show what daemon would do
 npx tsx src/index.ts                   # Start daemon
