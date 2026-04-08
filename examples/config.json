@@ -1,5 +1,5 @@
 {
-  "projects_root": "/Users/zion/Repos/Zylo",
+  "projects_root": "/Users/YOUR_USER/Repos/Workspace",
   "inactivity_threshold_minutes": 15,
   "check_interval_minutes": 5,
   "max_concurrency": 1,
@@ -12,7 +12,8 @@
   "timeouts": {
     "small_minutes": 5,
     "medium_minutes": 15,
-    "large_minutes": 45
+    "large_minutes": 45,
+    "xlarge_minutes": 90
   },
   "daily_report_hour": 8,
   "weekly_report_day": 1

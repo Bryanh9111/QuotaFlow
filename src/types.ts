@@ -1,5 +1,5 @@
 export type TaskPriority = "high" | "medium" | "low";
-export type TaskSize = "small" | "medium" | "large";
+export type TaskSize = "small" | "medium" | "large" | "xlarge";
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "skipped";
 
 export interface Task {
@@ -36,6 +36,7 @@ export interface Config {
     small_minutes: number;
     medium_minutes: number;
     large_minutes: number;
+    xlarge_minutes: number;
   };
   daily_report_hour: number;
   weekly_report_day: number;
@@ -77,13 +78,18 @@ export const DEFAULT_CONFIG: Config = {
     small_minutes: 5,
     medium_minutes: 15,
     large_minutes: 45,
+    xlarge_minutes: 90,
   },
   daily_report_hour: 8,
   weekly_report_day: 1,
 };
 
+// Token estimates calibrated against real observations.
+// Real data: a large planning task consumed 908K tokens (15x the old large=60K).
+// These are conservative defaults - estimator learns from history after 3 samples.
 export const SIZE_TOKEN_ESTIMATES: Record<TaskSize, number> = {
-  small: 10000,
-  medium: 30000,
-  large: 60000,
+  small: 15000,     // bug fix, small review
+  medium: 60000,    // feature implementation, tests
+  large: 200000,    // multi-file refactor, full analysis
+  xlarge: 800000,   // engineering plans, comprehensive audits
 };

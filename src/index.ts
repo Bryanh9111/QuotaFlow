@@ -44,6 +44,7 @@ function main(): void {
     small: config.timeouts.small_minutes,
     medium: config.timeouts.medium_minutes,
     large: config.timeouts.large_minutes,
+    xlarge: config.timeouts.xlarge_minutes ?? 90,
   });
   const notifier = new Notifier(config.discord_webhook_url);
 

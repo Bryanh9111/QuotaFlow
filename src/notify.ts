@@ -76,7 +76,9 @@ export class Notifier {
   async sendDailyDigest(
     tasks: Task[],
     quotaUsed: number,
-    quotaTotal: number
+    quotaTotal: number,
+    projectBreakdown?: Array<{ project: string; tokens: number; count: number }>,
+    outliers?: Array<{ task_id: string; size: string; actual: number; estimated: number }>
   ): Promise<void> {
     if (!this.webhookUrl) return;
 
@@ -88,13 +90,38 @@ export class Notifier {
     const fields: DiscordField[] = [
       { name: "Completed", value: String(completed), inline: true },
       { name: "Failed", value: String(failed), inline: true },
-      { name: "Quota Utilization", value: `${utilization}%`, inline: true },
+      { name: "Utilization", value: `${utilization}%`, inline: true },
     ];
+
+    // Per-project breakdown
+    if (projectBreakdown && projectBreakdown.length > 0) {
+      const totalTokens = projectBreakdown.reduce((sum, p) => sum + p.tokens, 0);
+      const breakdown = projectBreakdown
+        .slice(0, 5)
+        .map((p) => {
+          const pct = totalTokens > 0 ? ((p.tokens / totalTokens) * 100).toFixed(0) : "0";
+          return `**${p.project}**: ${p.tokens.toLocaleString()} tokens (${pct}%, ${p.count} tasks)`;
+        })
+        .join("\n");
+      fields.push({ name: "Per-Project Usage", value: breakdown || "No data" });
+    }
+
+    // Outlier warnings
+    if (outliers && outliers.length > 0) {
+      const outlierText = outliers
+        .slice(0, 3)
+        .map((o) => {
+          const ratio = (o.actual / o.estimated).toFixed(1);
+          return `⚠️ \`${o.task_id}\` (${o.size}): ${o.actual.toLocaleString()} tokens (${ratio}x estimated ${o.estimated.toLocaleString()})`;
+        })
+        .join("\n");
+      fields.push({ name: "Estimate Outliers", value: outlierText });
+    }
 
     await this.post({
       embeds: [
         {
-          title: "Daily Digest",
+          title: "QuotaFlow Daily Digest",
           color: COLOR_BLUE,
           fields,
           timestamp: new Date().toISOString(),

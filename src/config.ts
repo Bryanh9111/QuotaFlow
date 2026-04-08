@@ -61,4 +61,7 @@ export function validateConfig(config: Config): void {
   if (config.timeouts.large_minutes < 0) {
     throw new Error("timeouts.large_minutes must be non-negative");
   }
+  if (config.timeouts.xlarge_minutes !== undefined && config.timeouts.xlarge_minutes < 0) {
+    throw new Error("timeouts.xlarge_minutes must be non-negative");
+  }
 }

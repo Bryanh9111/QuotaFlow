@@ -44,6 +44,13 @@ export class QuotaMonitor {
       // Column already exists - ignore
     }
 
+    // Migration: add project column if not present
+    try {
+      this.db.exec("ALTER TABLE usage_log ADD COLUMN project TEXT");
+    } catch {
+      // Column already exists - ignore
+    }
+
     // Initialize window_start if not present
     const exists = this.db
       .prepare("SELECT value FROM window_state WHERE key = 'window_start'")
@@ -102,12 +109,63 @@ export class QuotaMonitor {
     return row.total;
   }
 
-  recordUsage(taskId: string, tokensUsed: number, durationMs: number, size?: TaskSize): void {
+  recordUsage(
+    taskId: string,
+    tokensUsed: number,
+    durationMs: number,
+    size?: TaskSize,
+    project?: string
+  ): void {
     this.db
       .prepare(
-        "INSERT INTO usage_log (task_id, tokens_used, duration_ms, recorded_at, task_size) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO usage_log (task_id, tokens_used, duration_ms, recorded_at, task_size, project) VALUES (?, ?, ?, ?, ?, ?)"
       )
-      .run(taskId, tokensUsed, durationMs, Date.now(), size ?? null);
+      .run(taskId, tokensUsed, durationMs, Date.now(), size ?? null, project ?? null);
+  }
+
+  /** Get tokens used per project in a time window (default: last 7 days) */
+  getUsageByProject(sinceMs?: number): Array<{ project: string; tokens: number; count: number }> {
+    const since = sinceMs ?? Date.now() - SEVEN_DAYS_MS;
+    const rows = this.db
+      .prepare(
+        `SELECT
+          COALESCE(project, 'unknown') AS project,
+          SUM(tokens_used) AS tokens,
+          COUNT(*) AS count
+        FROM usage_log
+        WHERE recorded_at >= ?
+        GROUP BY project
+        ORDER BY tokens DESC`
+      )
+      .all(since) as Array<{ project: string; tokens: number; count: number }>;
+    return rows;
+  }
+
+  /** Detect outlier tasks: actual tokens >> estimated for their size */
+  getOutliers(sinceMs?: number, multiplier = 3): Array<{ task_id: string; size: string; actual: number; estimated: number }> {
+    const since = sinceMs ?? Date.now() - SEVEN_DAYS_MS;
+    const rows = this.db
+      .prepare(
+        `SELECT task_id, task_size, tokens_used
+        FROM usage_log
+        WHERE recorded_at >= ? AND task_size IS NOT NULL
+        ORDER BY tokens_used DESC`
+      )
+      .all(since) as Array<{ task_id: string; task_size: string; tokens_used: number }>;
+
+    const outliers: Array<{ task_id: string; size: string; actual: number; estimated: number }> = [];
+    for (const row of rows) {
+      const estimated = SIZE_TOKEN_ESTIMATES[row.task_size as TaskSize] ?? 0;
+      if (estimated > 0 && row.tokens_used >= estimated * multiplier) {
+        outliers.push({
+          task_id: row.task_id,
+          size: row.task_size,
+          actual: row.tokens_used,
+          estimated,
+        });
+      }
+    }
+    return outliers;
   }
 
   estimateTokens(size: TaskSize): number {

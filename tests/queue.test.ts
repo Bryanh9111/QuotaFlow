@@ -126,13 +126,13 @@ describe("TaskQueueManager", () => {
 
   it("pickNext returns highest-priority task within token budget", () => {
     const mgr = makeManager();
-    // small=10000, medium=30000, large=60000
+    // small=15K, medium=60K, large=200K, xlarge=800K
     mgr.addTask({ description: "Big task", project: "Relay", priority: "high", size: "large" });
     mgr.addTask({ description: "Med task", project: "Relay", priority: "medium", size: "medium" });
     mgr.addTask({ description: "Sm task", project: "Relay", priority: "low", size: "small" });
 
-    // Only 35000 tokens available: large (60000) won't fit, medium (30000) fits
-    const next = mgr.pickNext(35000);
+    // Only 70K available: large (200K) won't fit, medium (60K) fits
+    const next = mgr.pickNext(70000);
     expect(next).not.toBeNull();
     expect(next!.size).toBe("medium");
     expect(next!.priority).toBe("medium");
@@ -142,7 +142,7 @@ describe("TaskQueueManager", () => {
     const mgr = makeManager();
     mgr.addTask({ description: "Large task", project: "Relay", priority: "high", size: "large" });
 
-    const next = mgr.pickNext(5000); // less than small (10000)
+    const next = mgr.pickNext(5000); // less than small (15K)
     expect(next).toBeNull();
   });
 

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { TaskExecutor } from "../src/executor.js";
 import type { Task } from "../src/types.js";
 
-const defaultTimeouts = { small: 5, medium: 15, large: 45 };
+const defaultTimeouts = { small: 5, medium: 15, large: 45, xlarge: 90 };
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -73,7 +73,7 @@ describe("TaskExecutor.buildClaudeArgs", () => {
     expect(args).toContain("-p");
     const prompt = args[args.indexOf("-p") + 1];
     expect(prompt).toContain("add dark mode");
-    expect(prompt).toContain("handover document");
+    expect(prompt).toContain("Handover Doc");
     expect(args).toContain("--output-format");
     expect(args).toContain("stream-json");
     expect(args).toContain("--dangerously-skip-permissions");
@@ -96,7 +96,7 @@ describe("TaskExecutor.buildClaudeArgs", () => {
 });
 
 describe("TaskExecutor.getTimeoutMs", () => {
-  const ex = new TaskExecutor({ small: 5, medium: 15, large: 45 });
+  const ex = new TaskExecutor({ small: 5, medium: 15, large: 45, xlarge: 90 });
 
   it("returns correct ms for small", () => {
     expect(ex.getTimeoutMs("small")).toBe(5 * 60 * 1000);
@@ -142,7 +142,7 @@ describe("TaskExecutor.execute", () => {
     const { dir, initialBranch } = makeTempGitRepo();
     try {
       // Use very short timeout so test doesn't hang if claude is installed
-      const ex = new TaskExecutor({ small: 0.1, medium: 0.1, large: 0.1 });
+      const ex = new TaskExecutor({ small: 0.1, medium: 0.1, large: 0.1, xlarge: 0.1 });
       const task = makeTask({ id: "t2", description: "test missing cli", size: "small" });
       const result = await ex.execute(task, dir);
 

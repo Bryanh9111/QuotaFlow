@@ -78,9 +78,11 @@ describe("QuotaMonitor", () => {
   });
 
   it("hasQuotaFor returns true when enough tokens available", () => {
-    expect(monitor.hasQuotaFor("small")).toBe(true);   // needs 10000, has 79200
-    expect(monitor.hasQuotaFor("medium")).toBe(true);  // needs 30000
-    expect(monitor.hasQuotaFor("large")).toBe(true);   // needs 60000
+    // USABLE_TOKENS = 79200; small=15K, medium=60K fit; large=200K, xlarge=800K don't
+    expect(monitor.hasQuotaFor("small")).toBe(true);
+    expect(monitor.hasQuotaFor("medium")).toBe(true);
+    expect(monitor.hasQuotaFor("large")).toBe(false);
+    expect(monitor.hasQuotaFor("xlarge")).toBe(false);
   });
 
   it("hasQuotaFor returns false after quota is nearly exhausted", () => {
@@ -134,16 +136,16 @@ describe("QuotaMonitor", () => {
 
   describe("estimateTokens", () => {
     it("returns SIZE_TOKEN_ESTIMATES default when no history", () => {
-      expect(monitor.estimateTokens("small")).toBe(10000);
-      expect(monitor.estimateTokens("medium")).toBe(30000);
-      expect(monitor.estimateTokens("large")).toBe(60000);
+      expect(monitor.estimateTokens("small")).toBe(SIZE_TOKEN_ESTIMATES.small);
+      expect(monitor.estimateTokens("medium")).toBe(SIZE_TOKEN_ESTIMATES.medium);
+      expect(monitor.estimateTokens("large")).toBe(SIZE_TOKEN_ESTIMATES.large);
     });
 
     it("returns SIZE_TOKEN_ESTIMATES default when fewer than 3 samples", () => {
       monitor.recordUsage("t1", 8000, 1000, "small");
       monitor.recordUsage("t2", 12000, 1000, "small");
       // Only 2 samples - should still fall back to default
-      expect(monitor.estimateTokens("small")).toBe(10000);
+      expect(monitor.estimateTokens("small")).toBe(SIZE_TOKEN_ESTIMATES.small);
     });
 
     it("returns average when 3 or more samples exist", () => {
@@ -163,7 +165,7 @@ describe("QuotaMonitor", () => {
       monitor.recordUsage("m3", 30000, 1000, "medium");
       // avg medium = 25000; small has no history so uses default
       expect(monitor.estimateTokens("medium")).toBe(25000);
-      expect(monitor.estimateTokens("small")).toBe(10000);
+      expect(monitor.estimateTokens("small")).toBe(SIZE_TOKEN_ESTIMATES.small);
     });
   });
 });

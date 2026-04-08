@@ -38,7 +38,9 @@ function mockDeps() {
     },
     quota: {
       getAvailableTokens: vi.fn<[], number>().mockReturnValue(20000),
-      recordUsage: vi.fn<[string, number, number], void>(),
+      recordUsage: vi.fn(),
+      getUsageByProject: vi.fn().mockReturnValue([]),
+      getOutliers: vi.fn().mockReturnValue([]),
       markRateLimited: vi.fn<[], void>(),
       setWindowResetTime: vi.fn<[number], void>(),
       isWindowExhausted: vi.fn<[], boolean>().mockReturnValue(false),
@@ -131,7 +133,7 @@ describe("Scheduler", () => {
     });
 
     // recordUsage
-    expect(deps.quota.recordUsage).toHaveBeenCalledWith(task.id, result.tokens_used, result.duration_ms);
+    expect(deps.quota.recordUsage).toHaveBeenCalledWith(task.id, result.tokens_used, result.duration_ms, task.size, task.project);
 
     // notify
     expect(deps.notifier.taskCompleted).toHaveBeenCalledWith(task, result);
@@ -337,7 +339,9 @@ describe("Scheduler", () => {
         expect(deps.notifier.sendDailyDigest).toHaveBeenCalledWith(
           [],
           expect.any(Number),
-          expect.any(Number)
+          expect.any(Number),
+          expect.any(Array),
+          expect.any(Array)
         );
       } finally {
         vi.useRealTimers();

@@ -140,14 +140,14 @@ describe("Notifier", () => {
       const body = JSON.parse(fetchFn.mock.calls[0][1].body);
       const embed = body.embeds[0];
       expect(embed.color).toBe(0x5865f2); // blue
-      expect(embed.title).toBe("Daily Digest");
+      expect(embed.title).toBe("QuotaFlow Daily Digest");
 
       const byName = Object.fromEntries(
         embed.fields.map((f: { name: string; value: string }) => [f.name, f.value])
       );
       expect(byName["Completed"]).toBe("2");
       expect(byName["Failed"]).toBe("1");
-      expect(byName["Quota Utilization"]).toBe("50.0%");
+      expect(byName["Utilization"]).toBe("50.0%");
     });
 
     it("shows 0.0% utilization when quotaTotal is 0", async () => {
@@ -158,7 +158,7 @@ describe("Notifier", () => {
       const body = JSON.parse(fetchFn.mock.calls[0][1].body);
       const embed = body.embeds[0];
       const utilField = embed.fields.find(
-        (f: { name: string }) => f.name === "Quota Utilization"
+        (f: { name: string }) => f.name === "Utilization"
       );
       expect(utilField.value).toBe("0.0%");
     });

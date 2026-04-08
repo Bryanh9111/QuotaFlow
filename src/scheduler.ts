@@ -9,7 +9,9 @@ interface SchedulerDeps {
   };
   quota: {
     getAvailableTokens(): number;
-    recordUsage(taskId: string, tokens: number, durationMs: number): void;
+    recordUsage(taskId: string, tokens: number, durationMs: number, size?: import("./types.js").TaskSize, project?: string): void;
+    getUsageByProject(sinceMs?: number): Array<{ project: string; tokens: number; count: number }>;
+    getOutliers(sinceMs?: number, multiplier?: number): Array<{ task_id: string; size: string; actual: number; estimated: number }>;
     markRateLimited(): void;
     setWindowResetTime(unixTimestamp: number): void;
     isWindowExhausted(): boolean;
@@ -31,7 +33,13 @@ interface SchedulerDeps {
   notifier: {
     taskCompleted(task: Task, result: ExecutionResult): Promise<void>;
     sendMessage(content: string): Promise<void>;
-    sendDailyDigest(tasks: Task[], quotaUsed: number, quotaTotal: number): Promise<void>;
+    sendDailyDigest(
+      tasks: Task[],
+      quotaUsed: number,
+      quotaTotal: number,
+      projectBreakdown?: Array<{ project: string; tokens: number; count: number }>,
+      outliers?: Array<{ task_id: string; size: string; actual: number; estimated: number }>
+    ): Promise<void>;
   };
   logger: {
     info(msg: string, data?: Record<string, unknown>): void;
@@ -292,7 +300,7 @@ export class Scheduler {
           tokens_used: result.tokens_used,
           duration_ms: result.duration_ms,
         });
-        quota.recordUsage(task.id, result.tokens_used, result.duration_ms);
+        quota.recordUsage(task.id, result.tokens_used, result.duration_ms, task.size, task.project);
         logger.info("task completed", { id: task.id, tokens: result.tokens_used });
       } else {
         const errMsg = result.error ?? result.stderr ?? "unknown error";
@@ -315,7 +323,9 @@ export class Scheduler {
     if (currentHour >= config.daily_report_hour && this.lastDailyDigest !== todayStr) {
       const weeklyUsage = quota.getWeeklyUsage();
       const quotaTotal = config.quota.tokens_per_5h_window * (24 / 5) * 7;
-      await notifier.sendDailyDigest(queue.getAll(), weeklyUsage.total_tokens, quotaTotal);
+      const projectBreakdown = quota.getUsageByProject();
+      const outliers = quota.getOutliers();
+      await notifier.sendDailyDigest(queue.getAll(), weeklyUsage.total_tokens, quotaTotal, projectBreakdown, outliers);
       this.lastDailyDigest = todayStr;
     }
 
@@ -326,7 +336,9 @@ export class Scheduler {
     ) {
       const weeklyUsage = quota.getWeeklyUsage();
       const quotaTotal = config.quota.tokens_per_5h_window * (24 / 5) * 7;
-      await notifier.sendDailyDigest(queue.getAll(), weeklyUsage.total_tokens, quotaTotal);
+      const projectBreakdown = quota.getUsageByProject();
+      const outliers = quota.getOutliers();
+      await notifier.sendDailyDigest(queue.getAll(), weeklyUsage.total_tokens, quotaTotal, projectBreakdown, outliers);
       this.lastWeeklyDigest = todayStr;
     }
   }

@@ -77,9 +77,9 @@ function parseStreamOutput(stdout: string): {
 }
 
 export class TaskExecutor {
-  private timeouts: { small: number; medium: number; large: number };
+  private timeouts: { small: number; medium: number; large: number; xlarge: number };
 
-  constructor(timeouts: { small: number; medium: number; large: number }) {
+  constructor(timeouts: { small: number; medium: number; large: number; xlarge: number }) {
     this.timeouts = timeouts;
   }
 
@@ -94,19 +94,58 @@ export class TaskExecutor {
     return `${prefix}${task.id}-${slug}`;
   }
 
-  private static HANDOVER_SUFFIX = `
+  private static SCOPE_CONTRACT = `
+# QuotaFlow Task Scope Contract (MANDATORY)
 
-After completing the task above, create a handover document at doc/handover-{task-slug}.md containing:
-1. What was done (summary of changes)
-2. Key decisions made and why
-3. What to do next (concrete next steps for the following agent session)
-4. Known risks or caveats
-5. Files modified and their purpose
-Keep it concise and actionable for the next claude session to pick up seamlessly.`;
+You are being invoked by QuotaFlow, an autonomous task dispatcher. Follow these hard rules:
+
+## Task Size: {size} (target ~{budget} tokens)
+
+## Before Acting
+1. State in 1-2 sentences what will be delivered
+2. State what is OUT of scope
+3. Estimate file count: if you expect to modify more than {max_files} files, STOP and write a handover doc instead
+
+## Hard Stops
+- Abort if you've read more than 50 files (you're exploring, not executing)
+- Abort if the task has grown beyond its original scope
+- Abort if you cannot identify a clear deliverable unit
+
+## Output (exactly one of)
+(a) Concrete changes on a feature branch (preferred)
+(b) Handover doc explaining why scope exceeds budget
+(c) Clear "already done" no-op with explanation
+
+## Handover Doc (ALWAYS required)
+Create doc/handover-{task-slug}.md with:
+1. What was done
+2. Key decisions and rationale
+3. Concrete next steps for the next session
+4. Known risks
+5. Files modified
+
+Keep it concise and actionable.
+
+---
+# Task
+`;
+
+  private static sizeBudgets: Record<TaskSize, { budget: string; maxFiles: string }> = {
+    small: { budget: "15K", maxFiles: "2" },
+    medium: { budget: "60K", maxFiles: "5" },
+    large: { budget: "200K", maxFiles: "15" },
+    xlarge: { budget: "800K", maxFiles: "10 (usually 1 doc)" },
+  };
 
   buildClaudeArgs(task: Task): string[] {
     const slug = task.id.slice(0, 8);
-    const prompt = task.description + TaskExecutor.HANDOVER_SUFFIX.replace("{task-slug}", slug);
+    const budgets = TaskExecutor.sizeBudgets[task.size];
+    const contract = TaskExecutor.SCOPE_CONTRACT
+      .replace("{size}", task.size)
+      .replace("{budget}", budgets.budget)
+      .replace("{max_files}", budgets.maxFiles)
+      .replace("{task-slug}", slug);
+    const prompt = contract + "\n" + task.description + `\n\n(Remember: create doc/handover-${slug}.md when done)`;
     return ["-p", prompt, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
   }
 
