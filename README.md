@@ -1,43 +1,69 @@
 # QuotaFlow
 
-Local daemon that maximizes Claude Max subscription value by automatically dispatching Claude Code tasks during your idle time. Built-in dual-layer quota awareness (5h session + weekly), safe git isolation, and automatic scope control.
+> A local daemon that runs Claude Code tasks during your idle time, using quota you'd otherwise waste. Zero extra cost, safe git isolation, dual-layer quota awareness.
 
-**Zero additional cost** — uses your existing Claude Max subscription via `claude -p` headless mode.
+**Problem it solves:** Claude Max subscribers waste 30-50% of their 5-hour token window while sleeping or away. QuotaFlow uses that idle quota to run real development tasks (code review, refactors, engineering plans) in the background, committing results to feature branches for review when you return.
 
-## What it does
+**Key features:**
+- Dual-layer quota awareness (5h session + 7-day weekly) from Claude CLI's real `rate_limit_event` data
+- Task scope control via AGENTS.md contract injected into every task prompt (prevents 908K-token blowouts)
+- Safe git isolation: commits to `quotaflow/task-*` branches, never touches `main`, never pushes to remote
+- Auto handover docs per task for seamless session-to-session context transfer
+- Discord webhook notifications with per-project breakdown and outlier detection
+- Task size tiers calibrated from real data (small 15K / medium 60K / large 200K / xlarge 800K tokens)
 
-1. Detects when you're not actively using Claude (pgrep-based)
-2. Probes real rate limit status from Claude CLI's `stream-json` output
-3. Picks prioritized tasks from a JSON queue
-4. Executes them via `claude -p` in isolated git feature branches
-5. Commits results (never pushes, never touches main)
-6. Generates handover docs per task, sends Discord notifications
-7. Automatically backs off when quota gets tight
+---
 
-## Quick Install (new machine)
+## What is QuotaFlow?
+
+QuotaFlow is a **local background daemon** for macOS (Linux untested) that schedules [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) tasks during user idle time. It is NOT:
+- A Claude API wrapper (uses your existing Max subscription via `claude -p` headless mode)
+- A web service (no server, no UI, runs locally)
+- A replacement for interactive Claude Code (only runs when you're not using it)
+- A multi-machine orchestrator (single machine, single subscription)
+
+It IS:
+- A smart cron job that picks the right task at the right time based on real quota state
+- A scope-control layer that prevents runaway tasks via prompt injection
+- A measurement instrument that learns real token costs per task size
+
+---
+
+## Quick Install (New Machine, 5 Minutes)
 
 ```bash
 # 1. Clone the repo
 git clone https://github.com/Bryanh9111/QuotaFlow.git ~/Repos/QuotaFlow
 cd ~/Repos/QuotaFlow
 
-# 2. Install dependencies (requires Node.js 20+ via nvm)
+# 2. Install Node.js dependencies (requires Node 20+ via nvm)
 npm install
 
 # 3. Run tests to verify installation
 npm test
+# Expected: Test Files 11 passed, Tests 133 passed
 
 # 4. Create config directory and copy example
 mkdir -p ~/.quotaflow
 cp examples/config.json ~/.quotaflow/config.json
 
-# 5. Edit config to set your projects_root and (optional) Discord webhook
+# 5. Edit config - set projects_root to your workspace path
 vi ~/.quotaflow/config.json
 ```
 
+### Prerequisites
+
+| Requirement | How to install |
+|-------------|----------------|
+| Node.js 20+ | `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh \| bash` then `nvm install 20` |
+| Claude Code CLI | See [Claude Code install guide](https://docs.claude.com/en/docs/claude-code/setup) then `claude auth` |
+| Claude Max subscription | Required - QuotaFlow uses your existing subscription, no API key needed |
+| Git | Pre-installed on macOS, or `brew install git` |
+| macOS | Linux should work but launchd service is macOS-only |
+
 ### Required Config Fields
 
-Edit `~/.quotaflow/config.json`:
+Only two fields need attention in `~/.quotaflow/config.json`:
 
 ```json
 {
@@ -46,45 +72,88 @@ Edit `~/.quotaflow/config.json`:
 }
 ```
 
-All other fields have sensible defaults.
+- **`projects_root`**: Absolute path to the parent directory containing all projects QuotaFlow can operate on. When you add a task with `--project MyWebApp`, QuotaFlow looks for `{projects_root}/MyWebApp`.
+- **`discord_webhook_url`**: Optional. Leave empty `""` to disable Discord notifications. To create a webhook: Discord server → Settings → Integrations → Webhooks → New Webhook → Copy URL.
 
-### Prerequisites
+All other fields have sensible defaults (see Configuration Reference below).
 
-- **Node.js 20+** (install via nvm: `nvm install 20`)
-- **Claude Code CLI** installed and authenticated (`claude auth`)
-- **Git** with a clean working directory on target projects
-- **macOS** (Linux should work but untested for launchd)
+---
 
-## Usage
+## First Task Walkthrough
 
-### Add a task
+Let's run your first task end-to-end. Assumes install is complete.
 
 ```bash
 cd ~/Repos/QuotaFlow
 
-# Manual task
+# 1. Check current quota and queue state
+npx tsx src/index.ts status
+# Output:
+# QuotaFlow Status
+#   Window tokens: 79,200 / 79,200 available
+#   Weekly usage: 0 tokens (0 tasks)
+#   Queued tasks: 0
+
+# 2. Add a small task using a built-in template
+npx tsx src/index.ts template review --project YourProject
+# Output: Task added from template 'review': [medium] abc12345 | YourProject | ...
+
+# 3. See it in the queue
+npx tsx src/index.ts list
+# Output: QUEUED
+#   [medium] abc12345 | YourProject | Review recent changes...
+
+# 4. Dry-run to verify scheduler would dispatch it
+npx tsx src/index.ts --dry-run
+# Expected: "[DRY RUN] would execute task { id: 'abc12345', ... }"
+# Ctrl+C to exit
+
+# 5. Run daemon in foreground (for testing)
+npx tsx src/index.ts
+# Keep running, close all other claude sessions, wait 15 minutes
+# Daemon will detect inactivity, dispatch the task, commit to feature branch
+
+# 6. After daemon runs the task, check the branch in your project
+cd /path/to/projects_root/YourProject
+git branch | grep quotaflow
+# Should show: quotaflow/task-abc12345-*
+
+git log quotaflow/task-abc12345-* --oneline -5
+# Should show the task's commit
+```
+
+---
+
+## Usage Reference
+
+### Task management commands
+
+```bash
+# Add a manual task
 npx tsx src/index.ts add "Review auth module for security issues" \
   --project MyWebApp --priority high --size medium
 
-# From template
+# Add from a template
 npx tsx src/index.ts template review --project MyApiServer
 npx tsx src/index.ts templates  # list available templates
+
+# List all tasks grouped by status
+npx tsx src/index.ts list
+
+# Remove a task (marks as skipped)
+npx tsx src/index.ts rm <task-id>
+
+# Show current quota and queue stats
+npx tsx src/index.ts status
 ```
 
-### Check status
+### Running the daemon
 
 ```bash
-npx tsx src/index.ts status        # show quota + queue stats
-npx tsx src/index.ts list          # show tasks grouped by status
-```
-
-### Run the daemon
-
-```bash
-# Foreground (for testing)
+# Foreground (for testing/debugging)
 npx tsx src/index.ts
 
-# Dry run (see what would happen without executing)
+# Dry run (shows what would happen without executing tasks)
 npx tsx src/index.ts --dry-run
 
 # Background (production)
@@ -94,14 +163,14 @@ nohup npx tsx src/index.ts > /dev/null 2>&1 &
 ### Install as macOS launchd service (auto-start)
 
 ```bash
-# 1. Copy the template and substitute paths
+# Copy the template and substitute paths
 sed \
   -e "s|{HOME}|$HOME|g" \
   -e "s|{QUOTAFLOW_DIR}|$(pwd)|g" \
   examples/quotaflow.plist.template \
   > ~/Library/LaunchAgents/com.quotaflow.daemon.plist
 
-# 2. Load
+# Load
 launchctl load ~/Library/LaunchAgents/com.quotaflow.daemon.plist
 
 # Check status
@@ -111,38 +180,11 @@ launchctl list | grep quotaflow
 launchctl unload ~/Library/LaunchAgents/com.quotaflow.daemon.plist
 ```
 
-## Agent Integration Guide
-
-**For AI agents working on or integrating with this repo:** read `AGENTS.md` and `CLAUDE.md` first. They contain:
-
-- **AGENTS.md**: The task scope contract injected into every dispatched task. Defines size budgets, hard stops, and handover requirements. If you're running a task via QuotaFlow, these rules apply.
-- **CLAUDE.md**: Project conventions, architecture overview, safety rules, and command reference.
-
-### Key Integration Points
-
-1. **Task schema** (`src/types.ts`):
-   ```typescript
-   interface Task {
-     id: string;
-     description: string;
-     project: string;     // must match a subdirectory in projects_root
-     priority: "high" | "medium" | "low";
-     size: "small" | "medium" | "large" | "xlarge";
-     status: "queued" | "running" | "completed" | "failed" | "skipped";
-   }
-   ```
-
-2. **Task sizes calibrated against real data:**
-   - `small` ~15K tokens (bug fix, 1-2 files)
-   - `medium` ~60K tokens (feature, 2-5 files)
-   - `large` ~200K tokens (refactor, 5-15 files)
-   - `xlarge` ~800K tokens (engineering plans, full audits)
-
-3. **Handover docs** are automatically created at `doc/handover-{task-id}.md` in each target project on task completion.
-
-4. **Feature branches** follow the pattern `quotaflow/task-{id}-{slug}` and are never pushed to remote.
+---
 
 ## Configuration Reference
+
+Full `~/.quotaflow/config.json` schema:
 
 ```json
 {
@@ -167,19 +209,42 @@ launchctl unload ~/Library/LaunchAgents/com.quotaflow.daemon.plist
 }
 ```
 
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `projects_root` | `""` (required) | Parent directory of all target projects |
+| `inactivity_threshold_minutes` | `15` | Minutes of no claude activity before daemon is eligible to dispatch |
+| `check_interval_minutes` | `5` | How often daemon wakes up to check conditions |
+| `max_concurrency` | `1` | Max simultaneous dispatched tasks |
+| `discord_webhook_url` | `""` | Discord webhook for notifications (empty disables) |
+| `quota.tokens_per_5h_window` | `88000` | Max 5x session window capacity (approximate) |
+| `quota.safety_buffer_percent` | `10` | Percentage reserved from each window for safety |
+| `timeouts.*_minutes` | `5/15/45/90` | Wall-clock timeout per task size |
+
+---
+
 ## How Quota Awareness Works
 
-QuotaFlow parses Claude CLI's `rate_limit_event` from `stream-json` output to get **real** quota state:
+QuotaFlow parses Claude CLI's `rate_limit_event` from `stream-json --verbose` output to get real quota state from Anthropic's API:
 
-- `status`: "allowed" | "allowed_warning" | "rejected"
-- `utilization`: 0.0-1.0 (actual percentage used)
-- `isUsingOverage`: whether you're into extra-usage territory
-- `resetsAt`: Unix timestamp for window reset
+```json
+{
+  "type": "rate_limit_event",
+  "rate_limit_info": {
+    "status": "allowed",
+    "rateLimitType": "five_hour",
+    "utilization": 0.47,
+    "isUsingOverage": false,
+    "resetsAt": 1775826000
+  }
+}
+```
 
-### Task size gating (applies to BOTH session and weekly limits, takes the stricter):
+Both `five_hour` (session) and `seven_day` (weekly) events are parsed on every pre-dispatch probe. The daemon uses the stricter of the two when deciding what task sizes to allow:
 
-| Utilization | Allowed sizes |
-|-------------|---------------|
+### Task size gating
+
+| Utilization | Allowed task sizes |
+|-------------|---------------------|
 | < 60%       | small, medium, large, xlarge |
 | 60-75%      | small, medium, large |
 | 75-90%      | small only |
@@ -187,36 +252,156 @@ QuotaFlow parses Claude CLI's `rate_limit_event` from `stream-json` output to ge
 
 If `isUsingOverage === true`, dispatch stops immediately to preserve your extra-usage balance.
 
+---
+
+## Agent Integration Guide
+
+**For AI agents (Claude, Cursor, etc.) working on or extending this repo:** read `AGENTS.md` and `CLAUDE.md` first.
+
+- **`AGENTS.md`** — The task scope contract injected into every dispatched `claude -p` prompt. Defines hard stops (max files read/modified, mandatory handover doc, abort conditions). If you're writing a task to be run by QuotaFlow, these rules apply.
+- **`CLAUDE.md`** — Project conventions, architecture, safety rules, command reference.
+- **`docs/ROADMAP.md`** — Current roadmap, permanently-dropped features with debate rationale, and trigger-based future work.
+- **`docs/debates/`** — 4-way AI debate records (Claude/Sonnet/Gemini/Codex) documenting major architectural decisions.
+
+### Task schema
+
+From `src/types.ts`:
+
+```typescript
+interface Task {
+  id: string;                    // 8-char UUID
+  description: string;           // Task prompt (AGENTS.md contract prepended at execution)
+  project: string;               // Must match subdirectory in projects_root
+  priority: "high" | "medium" | "low";
+  size: "small" | "medium" | "large" | "xlarge";
+  status: "queued" | "running" | "completed" | "failed" | "skipped";
+  created_at: string;
+  completed_at?: string;
+  tokens_used?: number;
+  branch?: string;
+  duration_ms?: number;
+  error?: string;
+}
+```
+
+### Task size calibration (from real observations)
+
+| Size | Target tokens | Typical use | Timeout |
+|------|---------------|-------------|---------|
+| small | ~15K | Bug fix, 1-2 file review | 5 min |
+| medium | ~60K | Feature implementation, 2-5 files | 15 min |
+| large | ~200K | Multi-file refactor, 5-15 files | 45 min |
+| xlarge | ~800K | Engineering plans, full audits | 90 min |
+
+Real data point: An xlarge engineering plan task consumed 908K tokens in 6 minutes. The `large=60K` estimate from the MVP phase was wrong by 15x — hence xlarge tier was added and all defaults recalibrated.
+
+---
+
 ## Safety Rules
 
+QuotaFlow runs unattended during idle time. These rules prevent damage:
+
 - **NEVER** pushes to remote
-- **NEVER** commits to main branch
+- **NEVER** commits to `main` branch
 - **ALL** changes go to `quotaflow/task-{id}-*` feature branches
-- Verifies `git status --porcelain` is clean before creating branches
-- Filters own daemon processes from activity detection
-- `spawn()` with argv array (no shell injection)
-- Path traversal blocked (`resolve() + startsWith()`)
+- Verifies `git status --porcelain` is clean before creating branches (refuses dirty workdirs)
+- Filters own daemon processes from activity detection (won't mistake itself for user activity)
+- `spawn()` with argv array for git commit (no shell injection surface)
+- Path traversal blocked via `resolve() + startsWith(projects_root)` check
+- `checkDigests()` wrapped in try/catch to prevent daemon lockup on Discord failures
+- `--dangerously-skip-permissions` is set for `claude -p` to allow file writes, so ensure only trusted tasks enter the queue
+
+---
 
 ## Files & Paths
 
 | Path | Purpose |
 |------|---------|
-| `~/.quotaflow/config.json` | Daemon settings |
-| `~/.quotaflow/tasks.json` | Task queue (JSON, edit manually or via CLI) |
+| `~/.quotaflow/config.json` | Daemon settings (not in repo) |
+| `~/.quotaflow/tasks.json` | Task queue state |
 | `~/.quotaflow/data.db` | SQLite usage history |
 | `~/.quotaflow/logs/YYYY-MM-DD.log` | Execution logs (daily rotation) |
-| `docs/ROADMAP.md` | Future work and decisions |
+| `docs/ROADMAP.md` | Roadmap and dropped features |
+| `docs/debates/` | AI debate decision records |
 | `AGENTS.md` | Task scope contract (injected into every task prompt) |
 | `CLAUDE.md` | Project conventions |
+| `examples/config.json` | Config template |
+| `examples/tasks.json` | Task file example |
+| `examples/quotaflow.plist.template` | launchd service template |
+
+---
+
+## Troubleshooting
+
+### "Test failed: Cannot find module 'better-sqlite3'"
+Run `npm install` again. better-sqlite3 is a native module and may need rebuild: `npm rebuild better-sqlite3`.
+
+### Daemon logs show "tick skipped: user active" continuously
+QuotaFlow detects your interactive Claude sessions and pauses. This is correct behavior. Either close your claude sessions and wait 15 minutes (default inactivity threshold), or reduce `inactivity_threshold_minutes` in config for testing.
+
+### Daemon logs show "tick skipped: window exhausted"
+Your Claude Max quota is rate-limited or using overage. Check the `resetsAt` timestamp in logs — daemon will automatically resume when the window resets.
+
+### Task failed with "working directory not clean"
+The target project has uncommitted changes. QuotaFlow refuses to operate on dirty workdirs for safety. Either commit/stash your changes or QuotaFlow will skip that project.
+
+### "claude: command not found" when daemon dispatches
+Claude CLI is not in the PATH available to the daemon. If running via launchd, the `scripts/start-daemon.sh` wrapper sources nvm to fix this. If still failing, ensure `claude` is installed via `which claude` and add its directory to the PATH export in `start-daemon.sh`.
+
+### Daemon never dispatches despite queue having tasks
+Check logs in `~/.quotaflow/logs/$(date +%Y-%m-%d).log` for which condition is failing: `tick skipped: user active`, `tick skipped: window exhausted`, `tick skipped: no tasks`, or `weekly quota limit reached`. The log line tells you exactly which gate blocked dispatch.
+
+### Discord notifications not arriving
+Test webhook manually: `curl -X POST -H 'Content-Type: application/json' -d '{"content":"test"}' YOUR_WEBHOOK_URL`. If this fails, the webhook URL is invalid. If it works but QuotaFlow doesn't notify, check `~/.quotaflow/logs/*.log` for `discord` errors.
+
+### Tokens consumed much more than estimated
+This is expected for xlarge tasks and documented in the size calibration section. The estimator learns from history after 3 samples per size. To reset the learning state, delete `~/.quotaflow/data.db` (only affects quota tracking, not task queue).
+
+---
+
+## FAQ
+
+### How is this different from OpenClaw or other Claude orchestrators?
+OpenClaw manages multiple Claude Code instances across machines (execution layer). QuotaFlow is a single-machine decision layer that decides what task to run when, based on real quota state. They could be composed but QuotaFlow does not require OpenClaw and works standalone.
+
+### Does this cost extra money?
+No. QuotaFlow uses your existing Claude Max subscription via `claude -p` headless mode. It only consumes quota you'd otherwise waste during idle time. The only cost is if you enable Extra Usage on your Claude account — QuotaFlow respects `isUsingOverage` and stops dispatch if detected.
+
+### Why not just use cron or launchd directly?
+A simple cron would blindly run tasks regardless of quota state, user activity, or task size. QuotaFlow adds: real-time quota awareness, activity detection, task size gating, handover doc generation, feature branch isolation, and outlier detection. Cron just fires timestamps.
+
+### Can I use this with Claude Pro instead of Max?
+Should work but not tested. Adjust `tokens_per_5h_window` in config to match your tier's capacity.
+
+### Is this safe to run on my main projects?
+Yes, subject to the safety rules above. QuotaFlow never pushes to remote, never touches main, commits only to feature branches, and refuses dirty workdirs. Worst case: you get a broken feature branch that you can delete.
+
+### Why TypeScript + Node.js instead of Python/Go/Rust?
+Same ecosystem as Claude Code CLI, native async I/O for process management, no build step via tsx, and vitest for fast testing. Zero ideology — "boring technology wins" per the debate decisions.
+
+### What happens if the daemon crashes mid-task?
+On startup, QuotaFlow scans for tasks in `running` status and resets them to `queued`. The crashed task's feature branch may exist but will be cleaned up on next attempt. No data corruption because tasks.json is atomic JSON writes.
+
+### Can I add my own agent CLI (not Claude Code)?
+Not currently. The `TaskExecutor` is hardcoded to `claude`. An `AgentAdapter` interface is on the trigger-based roadmap (see `docs/ROADMAP.md`) — will be added when a second CLI alternative exists.
+
+### Where are the decision records?
+See `docs/debates/` for 4-way AI debate records between Claude Opus, Sonnet, Gemini, and Codex. Each major architectural decision has a synthesis document explaining why features were kept, dropped, or deferred.
+
+---
 
 ## Development
 
 ```bash
 npm test           # Run all 133 tests
 npm run test:watch # Watch mode
-npm run dev        # Start daemon
+npm run dev        # Start daemon in foreground
 ```
+
+Architecture overview: see `CLAUDE.md` and `docs/quotaflow-prd.md`.
+
+---
 
 ## License
 
-ISC
+ISC — see [LICENSE](LICENSE).
