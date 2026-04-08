@@ -80,13 +80,23 @@ Dual-layer quota awareness using real data from Claude CLI's rate_limit_event:
 - `isUsingOverage`: boolean (extra usage detection)
 - `resetsAt`: Unix timestamp
 
+**Task size tiers (calibrated from real data after 908K outlier):**
+| Size | Target tokens | Typical use |
+|------|---------------|-------------|
+| small | ~15K | bug fix, 1-2 files |
+| medium | ~60K | feature, 2-5 files |
+| large | ~200K | refactor, 5-15 files |
+| xlarge | ~800K | engineering plans, audits |
+
 **Task size gating (applies to BOTH session and weekly, uses the stricter):**
 | Utilization | Allowed task sizes |
 |-------------|-------------------|
-| < 60%       | small, medium, large |
-| 60-75%      | small, medium |
+| < 60%       | small, medium, large, xlarge |
+| 60-75%      | small, medium, large |
 | 75-90%      | small only |
 | >= 90%      | stop all dispatch |
+
+**Task scope control:** Every dispatched task gets `AGENTS.md` scope contract injected into the prompt. Defines hard stops (no >50 files read, no >15 files modified), mandatory handover doc, and size-specific file count limits. This is the primary mechanism for preventing token blowouts.
 
 **Pre-dispatch probe:** Runs `claude -p "ok"` before each dispatch cycle to check current quota status. Costs minimal tokens but provides real-time awareness.
 
@@ -107,10 +117,8 @@ npm run test:watch # Watch mode
 npm run dev        # Start daemon
 ```
 
-## Next Steps (P3 - As Needed)
+## Roadmap
 
-- Web dashboard for task management and usage visualization
-- TODO.md / CLAUDE.md scanning to auto-generate tasks
-- OpenClaw integration as execution backend
-- Multi-subscription support
-- GitHub issue auto-conversion to tasks
+See `docs/ROADMAP.md` for full roadmap including P2.5 completion, permanently-dropped items (with debate rationale), and trigger-based future work.
+
+**Permanently dropped (from 2026-04-07 debate):** Web dashboard, client-server architecture, sub-agent orchestration, task dependencies, per-project budget, architecture boundary tests.
