@@ -121,7 +121,7 @@ describe("TaskQueueManager", () => {
         priority: "high",
         size: "small",
       })
-    ).toThrow(/does not exist/);
+    ).toThrow(/not found in configured roots/);
   });
 
   it("pickNext returns highest-priority task within token budget", () => {

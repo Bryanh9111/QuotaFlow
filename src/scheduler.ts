@@ -1,5 +1,7 @@
 import { join } from "node:path";
 import type { Config, Task, ExecutionResult, RateLimitInfo } from "./types.js";
+import { getProjectsRoots } from "./config.js";
+import { resolveProject } from "./project-resolver.js";
 
 interface SchedulerDeps {
   config: Config;
@@ -224,7 +226,27 @@ export class Scheduler {
       queue.updateTask(task.id, { status: "running" });
       logger.info("executing task", { id: task.id, project: task.project });
 
-      const projectPath = join(config.projects_root, task.project);
+      const roots = getProjectsRoots(config);
+      let projectPath: string;
+      if (roots.length === 0) {
+        // Legacy single-root mode: config.projects_root may be empty in unit tests.
+        projectPath = join(config.projects_root, task.project);
+      } else {
+        const resolved = resolveProject(task.project, roots);
+        if (!resolved.hit) {
+          const msg = `project not found in configured roots: ${task.project}`;
+          logger.error(msg, { project: task.project, roots });
+          queue.failTask(task.id, msg);
+          this.activeProjects.delete(task.project);
+          tickProjects.delete(task.project);
+          await notifier.taskCompleted(task, {
+            task_id: task.id, success: false, branch: "", tokens_used: 0,
+            duration_ms: 0, stdout: "", stderr: "", error: msg,
+          });
+          continue;
+        }
+        projectPath = resolved.hit.path;
+      }
       const promise = executor.execute(task, projectPath).catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         return { __threw: true as const, msg };

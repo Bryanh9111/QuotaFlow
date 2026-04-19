@@ -23,10 +23,17 @@ export interface TaskQueue {
 
 export interface Config {
   projects_root: string;
+  projects_roots: string[];
   inactivity_threshold_minutes: number;
   check_interval_minutes: number;
   max_concurrency: number;
   discord_webhook_url: string;
+  telegram_bot_token: string;
+  telegram_chat_id: string;
+  telegram_command_secret: string;
+  default_project: string;
+  default_size: TaskSize;
+  default_priority: TaskPriority;
   quota: {
     tokens_per_5h_window: number;
     weekly_compute_hours: number;
@@ -65,10 +72,17 @@ export interface ExecutionResult {
 
 export const DEFAULT_CONFIG: Config = {
   projects_root: "",
+  projects_roots: [],
   inactivity_threshold_minutes: 15,
   check_interval_minutes: 5,
   max_concurrency: 1,
   discord_webhook_url: "",
+  telegram_bot_token: "",
+  telegram_chat_id: "",
+  telegram_command_secret: "",
+  default_project: "",
+  default_size: "medium",
+  default_priority: "medium",
   quota: {
     tokens_per_5h_window: 88000,
     weekly_compute_hours: 200,

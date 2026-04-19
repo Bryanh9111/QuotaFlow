@@ -1,6 +1,20 @@
 import { readFileSync } from "fs";
 import { Config, DEFAULT_CONFIG } from "./types.js";
 
+/** Normalize projects_root + projects_roots into a single array. Single-root configs still work. */
+export function getProjectsRoots(config: Config): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const r of config.projects_roots ?? []) {
+    if (r && !seen.has(r)) { out.push(r); seen.add(r); }
+  }
+  if (config.projects_root && !seen.has(config.projects_root)) {
+    out.push(config.projects_root);
+    seen.add(config.projects_root);
+  }
+  return out;
+}
+
 function deepMerge<T extends object>(base: T, override: Partial<T>): T {
   const result = { ...base };
   for (const key in override) {
@@ -34,6 +48,14 @@ export function loadConfig(configPath: string): Config {
 }
 
 export function validateConfig(config: Config): void {
+  if (config.projects_roots && !Array.isArray(config.projects_roots)) {
+    throw new Error("projects_roots must be an array of strings");
+  }
+  if (config.projects_roots) {
+    for (const r of config.projects_roots) {
+      if (typeof r !== "string") throw new Error("projects_roots entries must be strings");
+    }
+  }
   if (config.check_interval_minutes < 0) {
     throw new Error("check_interval_minutes must be non-negative");
   }

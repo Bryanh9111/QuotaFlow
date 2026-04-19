@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { randomUUID } from "crypto";
-import { join, resolve, sep } from "path";
+import { resolve, sep } from "path";
 import type { Task, TaskQueue, TaskPriority, TaskSize } from "./types.js";
 import { SIZE_TOKEN_ESTIMATES } from "./types.js";
+import { resolveProject } from "./project-resolver.js";
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = {
   high: 0,
@@ -19,11 +20,15 @@ interface AddTaskInput {
 
 export class TaskQueueManager {
   private filePath: string;
-  private projectsRoot: string;
+  private roots: string[];
 
-  constructor(filePath: string, projectsRoot: string) {
+  constructor(filePath: string, rootsOrRoot: string | string[]) {
     this.filePath = filePath;
-    this.projectsRoot = projectsRoot;
+    this.roots = Array.isArray(rootsOrRoot)
+      ? rootsOrRoot.filter((r) => r && r.length > 0)
+      : rootsOrRoot
+        ? [rootsOrRoot]
+        : [];
   }
 
   private read(): TaskQueue {
@@ -53,21 +58,19 @@ export class TaskQueueManager {
   }
 
   addTask(input: AddTaskInput): Task {
-    const projectPath = resolve(this.projectsRoot, input.project);
-    const rootResolved = resolve(this.projectsRoot);
-    if (!projectPath.startsWith(rootResolved + sep)) {
-      throw new Error(`Project path escapes projects root: ${input.project}`);
-    }
-    if (!existsSync(projectPath)) {
-      throw new Error(
-        `Project path does not exist: ${projectPath}`
-      );
+    const outcome = resolveProject(input.project, this.roots);
+    if (!outcome.hit) {
+      const hint = outcome.candidates.length > 0
+        ? ` Candidates: ${outcome.candidates.map((c) => c.name).join(", ")}`
+        : "";
+      throw new Error(`Project not found in configured roots: ${input.project}.${hint}`);
     }
 
     const task: Task = {
       id: randomUUID().slice(0, 8),
       description: input.description,
-      project: input.project,
+      // Canonicalize to resolved project name so subsequent executors don't re-guess.
+      project: outcome.hit.name,
       priority: input.priority,
       size: input.size,
       status: "queued",
