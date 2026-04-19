@@ -1,9 +1,18 @@
 {
-  "projects_root": "/Users/YOUR_USER/Repos/Workspace",
+  "projects_root": "",
+  "projects_roots": [
+    "/Users/YOUR_USER/Repos/Workspace",
+    "/Users/YOUR_USER/Repos/Personal"
+  ],
   "inactivity_threshold_minutes": 15,
   "check_interval_minutes": 5,
   "max_concurrency": 1,
   "discord_webhook_url": "",
+  "telegram_bot_token": "",
+  "telegram_chat_id": "",
+  "telegram_command_secret": "",
+  "default_size": "medium",
+  "default_priority": "medium",
   "quota": {
     "tokens_per_5h_window": 88000,
     "weekly_compute_hours": 200,
