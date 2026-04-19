@@ -4,37 +4,43 @@ Local daemon for intelligent Claude Max token quota allocation across multiple l
 
 ## Architecture
 
-Single Node.js process daemon with 5-minute check loop:
+Single Node.js process daemon with 5-minute check loop + independent Telegram long-polling loop:
 1. Detect user activity (pgrep for claude processes, with grace period)
 2. Estimate remaining token quota (self-tracked via SQLite, 5h window + 7-day rolling)
 3. Pick highest-priority tasks from JSON queue (up to max_concurrency, same-project excluded)
-4. Execute via `claude -p` in isolated feature branches
-5. Log results, notify via Discord webhook, send daily/weekly digests
+4. Execute via `claude -p` in isolated feature branches (resolves project path via multi-root fuzzy matching)
+5. Log results, notify via Telegram or Discord, send daily/weekly digests
+6. Telegram inbound: 30s long-polling with chat_id whitelist + passphrase + message_id dedup (fully try/catch-isolated)
 
 ## Tech Stack
 
 - TypeScript + Node.js (ESM)
 - SQLite via better-sqlite3 (quota tracking + smart size estimation)
 - JSON file (task queue)
-- vitest (testing, 129 tests)
+- vitest (testing, 199 tests)
 - macOS launchd (daemon management)
 
 ## Project Structure
 
 ```
 src/
-  types.ts      - Shared types and constants
-  config.ts     - Configuration loading and validation
-  queue.ts      - Task queue manager (JSON-based, priority sorted)
-  quota.ts      - Token usage tracking (SQLite, window + weekly)
-  activity.ts   - Claude process detection with inactivity threshold
-  executor.ts   - Task execution with git branch isolation
-  notify.ts     - Discord webhook notifications + daily/weekly digest
-  logger.ts     - Structured file logging (daily rotation)
-  scheduler.ts  - Main daemon loop (concurrent dispatch, re-entrancy guard)
-  cli.ts        - CLI subcommands (add/list/rm/status/template)
-  templates.ts  - Predefined task templates (review/test/lint/docs/refactor)
-  index.ts      - Entry point (daemon or CLI routing)
+  types.ts                     - Shared types and constants
+  config.ts                    - Config loading + `getProjectsRoots()` multi-root helper
+  queue.ts                     - Task queue manager (JSON-based, priority sorted)
+  quota.ts                     - Token usage tracking (SQLite + WAL, window + weekly)
+  activity.ts                  - Claude process detection with inactivity threshold
+  executor.ts                  - Task execution with git branch isolation
+  project-resolver.ts          - Multi-root fuzzy project name → path (exact/ci/prefix/substring/abs)
+  notify.ts                    - Discord webhook notifier (fallback channel)
+  telegram-notifier.ts         - Telegram MarkdownV2 notifier (preferred channel)
+  telegram-state.ts            - last_update_id + processed_msg_ids FIFO (persisted JSON)
+  telegram-command-parser.ts   - Pure parser: @Name + /add + /list + /status + /rm + /help
+  telegram-poller.ts           - Independent 30s long-polling loop, try/catch-isolated
+  logger.ts                    - Structured file logging (daily rotation)
+  scheduler.ts                 - Main daemon loop (concurrent dispatch, re-entrancy guard)
+  cli.ts                       - CLI subcommands (add/list/rm/status/template)
+  templates.ts                 - Predefined task templates
+  index.ts                     - Entry point: wires scheduler + poller
 ```
 
 ## CLI Commands
@@ -107,7 +113,18 @@ Dual-layer quota awareness using real data from Claude CLI's rate_limit_event:
 - `~/.quotaflow/config.json` - Daemon settings (see examples/config.json)
 - `~/.quotaflow/tasks.json` - Task queue
 - `~/.quotaflow/logs/` - Execution logs (daily rotation)
-- `~/.quotaflow/data.db` - SQLite usage tracking
+- `~/.quotaflow/data.db` - SQLite usage tracking (WAL mode)
+- `~/.quotaflow/telegram.state.json` - Long-poll offset + processed message_id cache (200 FIFO)
+
+**Telegram setup** (optional but recommended for notifications + mobile enqueue):
+- `telegram_bot_token` + `telegram_chat_id` → enables outbound notifications
+- Add `telegram_command_secret` → also enables inbound commands (passphrase-gated)
+- Multi-workspace: prefer `projects_roots: string[]` over legacy `projects_root: string`
+
+**Mobile command syntax** (every message starts with the secret):
+- `<secret> @ProjectName Fix bug` — fuzzy-match project, default size/priority
+- `<secret> /add proj=X size=large pri=high <desc>` — full control
+- `<secret> /list-projects` — enumerate all projects across roots
 
 ## Development
 

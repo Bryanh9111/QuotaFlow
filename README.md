@@ -9,7 +9,7 @@
 - Task scope control via AGENTS.md contract injected into every task prompt (prevents 908K-token blowouts)
 - Safe git isolation: commits to `quotaflow/task-*` branches, never touches `main`, never pushes to remote
 - Auto handover docs per task for seamless session-to-session context transfer
-- Discord webhook notifications with per-project breakdown and outlier detection
+- Telegram or Discord notifications with per-project breakdown and outlier detection
 - Task size tiers calibrated from real data (small 15K / medium 60K / large 200K / xlarge 800K tokens)
 
 ---
@@ -67,13 +67,20 @@ Only two fields need attention in `~/.quotaflow/config.json`:
 
 ```json
 {
-  "projects_root": "/Users/YOUR_USER/Repos/YourWorkspace",
-  "discord_webhook_url": "https://discord.com/api/webhooks/..."
+  "projects_roots": [
+    "/Users/YOUR_USER/Repos/Workspace",
+    "/Users/YOUR_USER/Repos/Personal"
+  ],
+  "telegram_bot_token": "123456:ABCDEF...",
+  "telegram_chat_id": "1234567890"
 }
 ```
 
-- **`projects_root`**: Absolute path to the parent directory containing all projects QuotaFlow can operate on. When you add a task with `--project MyWebApp`, QuotaFlow looks for `{projects_root}/MyWebApp`.
-- **`discord_webhook_url`**: Optional. Leave empty `""` to disable Discord notifications. To create a webhook: Discord server → Settings → Integrations → Webhooks → New Webhook → Copy URL.
+- **`projects_roots`**: Array of absolute paths to parent directories containing projects QuotaFlow can operate on. When you add a task with `--project MyWebApp`, QuotaFlow searches each root in order and picks the first match. Legacy `projects_root` (singular string) is still accepted and is merged into the search list.
+- **Notifications**: Choose one channel (both optional, leave all empty to disable):
+  - **Telegram** (recommended): Create a bot via [@BotFather](https://t.me/BotFather) → `/newbot` → copy token. Send your bot `/start`, then GET `https://api.telegram.org/bot<TOKEN>/getUpdates` to find your `chat.id`. Fill `telegram_bot_token` + `telegram_chat_id`.
+  - **Discord**: Server → Settings → Integrations → Webhooks → New Webhook → Copy URL. Fill `discord_webhook_url`.
+  - Telegram takes precedence if both are configured.
 
 All other fields have sensible defaults (see Configuration Reference below).
 
@@ -188,11 +195,20 @@ Full `~/.quotaflow/config.json` schema:
 
 ```json
 {
-  "projects_root": "/path/to/your/workspace",
+  "projects_root": "",
+  "projects_roots": [
+    "/Users/YOUR_USER/Repos/Workspace",
+    "/Users/YOUR_USER/Repos/Personal"
+  ],
   "inactivity_threshold_minutes": 15,
   "check_interval_minutes": 5,
   "max_concurrency": 1,
   "discord_webhook_url": "https://discord.com/api/webhooks/...",
+  "telegram_bot_token": "",
+  "telegram_chat_id": "",
+  "telegram_command_secret": "",
+  "default_size": "medium",
+  "default_priority": "medium",
   "quota": {
     "tokens_per_5h_window": 88000,
     "weekly_compute_hours": 200,
@@ -211,14 +227,69 @@ Full `~/.quotaflow/config.json` schema:
 
 | Field | Default | Purpose |
 |-------|---------|---------|
-| `projects_root` | `""` (required) | Parent directory of all target projects |
+| `projects_root` | `""` | Legacy single-root form (merged into search list) |
+| `projects_roots` | `[]` | Array of absolute paths to scan for projects (first match wins on duplicates) |
 | `inactivity_threshold_minutes` | `15` | Minutes of no claude activity before daemon is eligible to dispatch |
 | `check_interval_minutes` | `5` | How often daemon wakes up to check conditions |
 | `max_concurrency` | `1` | Max simultaneous dispatched tasks |
 | `discord_webhook_url` | `""` | Discord webhook for notifications (empty disables) |
+| `telegram_bot_token` | `""` | Telegram bot token (takes precedence over Discord if set with chat_id) |
+| `telegram_chat_id` | `""` | Telegram chat ID (private chat or channel, negative for channels) |
+| `telegram_command_secret` | `""` | Passphrase prefix required for inbound commands (empty disables inbound) |
+| `default_size` | `"medium"` | Default task size when `@Project` shortcut omits size |
+| `default_priority` | `"medium"` | Default task priority when `@Project` shortcut omits priority |
 | `quota.tokens_per_5h_window` | `88000` | Max 5x session window capacity (approximate) |
 | `quota.safety_buffer_percent` | `10` | Percentage reserved from each window for safety |
 | `timeouts.*_minutes` | `5/15/45/90` | Wall-clock timeout per task size |
+
+---
+
+## Inbound Commands via Telegram
+
+If `telegram_bot_token` + `telegram_chat_id` + `telegram_command_secret` are all set, QuotaFlow starts a long-polling loop that accepts commands from Telegram. Three security layers:
+
+1. **chat_id whitelist**: only messages from the configured chat are processed (others silently dropped)
+2. **Passphrase prefix**: every message must begin with the `telegram_command_secret` (defense against Telegram account compromise)
+3. **Message dedup**: `message_id` cached in `~/.quotaflow/telegram.state.json` prevents replay via `getUpdates` retries
+
+**Command format** (every message starts with your secret, then either `@Project` shortcut or a slash command):
+
+```
+<secret> @QuotaFlow Fix login bug                   # shortcut: project name via fuzzy match + defaults
+<secret> /add proj=QuotaFlow size=large pri=high Fix X  # full control
+<secret> /list [N]                                  # show first N queued tasks (default 10)
+<secret> /list-projects                             # enumerate all projects in configured roots
+<secret> /status                                    # available tokens + queue count
+<secret> /rm <task-id>                              # remove queued task
+<secret> /help                                      # command reference
+```
+
+**Fuzzy project matching order** (`@Name` or `proj=Name`):
+1. Exact name match (case-sensitive)
+2. Case-insensitive exact
+3. Unambiguous prefix
+4. Unambiguous substring
+5. Absolute path inside a configured root
+
+When ambiguous or unknown, the bot replies with candidates.
+
+**Example workflow**:
+
+```
+You → bot: qf-a9f3x21 @QuotaFlow Review auth module for memory leaks
+bot → you: Queued `abc12345`
+          project: `QuotaFlow` | size: medium | priority: medium
+
+You → bot: qf-a9f3x21 @Blo Write post draft
+bot → you: Queued `def67890`
+          project: `Blog` (matched via prefix) | size: medium | priority: medium
+```
+
+**Safety notes**:
+
+- The poller runs in absolute isolation (dedicated `setTimeout` loop + `try/catch` wrap) - a bug or Telegram outage cannot crash the scheduler
+- Task descriptions enter the queue via the existing `queue.addTask()` API, which is already used by the CLI; no shell interpolation
+- Rotate `telegram_command_secret` by editing config + restarting daemon; unknown-secret messages are silently dropped
 
 ---
 
@@ -308,7 +379,7 @@ QuotaFlow runs unattended during idle time. These rules prevent damage:
 - Filters own daemon processes from activity detection (won't mistake itself for user activity)
 - `spawn()` with argv array for git commit (no shell injection surface)
 - Path traversal blocked via `resolve() + startsWith(projects_root)` check
-- `checkDigests()` wrapped in try/catch to prevent daemon lockup on Discord failures
+- `checkDigests()` wrapped in try/catch to prevent daemon lockup on notification failures
 - `--dangerously-skip-permissions` is set for `claude -p` to allow file writes, so ensure only trusted tasks enter the queue
 
 ---
@@ -321,6 +392,7 @@ QuotaFlow runs unattended during idle time. These rules prevent damage:
 | `~/.quotaflow/tasks.json` | Task queue state |
 | `~/.quotaflow/data.db` | SQLite usage history |
 | `~/.quotaflow/logs/YYYY-MM-DD.log` | Execution logs (daily rotation) |
+| `~/.quotaflow/telegram.state.json` | Telegram poll offset + processed message_id cache |
 | `docs/ROADMAP.md` | Roadmap and dropped features |
 | `docs/debates/` | AI debate decision records |
 | `AGENTS.md` | Task scope contract (injected into every task prompt) |
@@ -351,8 +423,12 @@ Claude CLI is not in the PATH available to the daemon. If running via launchd, t
 ### Daemon never dispatches despite queue having tasks
 Check logs in `~/.quotaflow/logs/$(date +%Y-%m-%d).log` for which condition is failing: `tick skipped: user active`, `tick skipped: window exhausted`, `tick skipped: no tasks`, or `weekly quota limit reached`. The log line tells you exactly which gate blocked dispatch.
 
-### Discord notifications not arriving
-Test webhook manually: `curl -X POST -H 'Content-Type: application/json' -d '{"content":"test"}' YOUR_WEBHOOK_URL`. If this fails, the webhook URL is invalid. If it works but QuotaFlow doesn't notify, check `~/.quotaflow/logs/*.log` for `discord` errors.
+### Notifications not arriving
+**Telegram**: Test manually: `curl -X POST "https://api.telegram.org/bot<TOKEN>/sendMessage" -d "chat_id=<ID>" -d "text=test"`. If this fails, verify the token via `https://api.telegram.org/bot<TOKEN>/getMe`. If chat_id is wrong, you must first send `/start` to the bot from that chat, then fetch it via `https://api.telegram.org/bot<TOKEN>/getUpdates`.
+
+**Discord**: Test webhook manually: `curl -X POST -H 'Content-Type: application/json' -d '{"content":"test"}' YOUR_WEBHOOK_URL`. If this fails, the webhook URL is invalid.
+
+If manual test works but QuotaFlow doesn't notify, check `~/.quotaflow/logs/*.log` and verify the `notify_channel` value on startup matches your expected adapter.
 
 ### Tokens consumed much more than estimated
 This is expected for xlarge tasks and documented in the size calibration section. The estimator learns from history after 3 samples per size. To reset the learning state, delete `~/.quotaflow/data.db` (only affects quota tracking, not task queue).

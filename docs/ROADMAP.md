@@ -1,6 +1,6 @@
 # QuotaFlow Roadmap
 
-Updated: 2026-04-07 (post roadmap-priority debate)
+Updated: 2026-04-18 (Telegram bidirectional shipped)
 
 ## Completed
 
@@ -31,6 +31,27 @@ Updated: 2026-04-07 (post roadmap-priority debate)
 - [x] `xlarge` task size tier (800K tokens target)
 - [x] Recalibrated SIZE_TOKEN_ESTIMATES from real data (small=15K, medium=60K, large=200K)
 - [x] Bug fix: `recordUsage` now passes `size` and `project` from scheduler
+
+### P3 (Telegram + Multi-workspace) -- 2026-04-18
+Driven by user need: phone-first task capture during idle time, across multiple workspaces.
+
+**Telegram outbound (notifications)**:
+- [x] `TelegramNotifier` class with MarkdownV2 escape helper
+- [x] Per-task completion push + daily/weekly digest on Telegram
+- [x] Discord kept as fallback channel (config selects one)
+
+**Telegram inbound (enqueue)**:
+- [x] `TelegramPoller` with 30s long-polling, try/catch-isolated from scheduler
+- [x] Three-layer auth: chat_id whitelist + passphrase prefix + `message_id` dedup
+- [x] State persisted to `~/.quotaflow/telegram.state.json` (not SQLite, avoids write contention)
+- [x] Commands: `@Project desc`, `/add proj= size= pri=`, `/list`, `/list-projects`, `/status`, `/rm`, `/help`
+- [x] Four-way AI debate recorded in `docs/debates/2026-04-18-telegram-inbound/`
+
+**Multi-workspace support**:
+- [x] `projects_roots: string[]` (legacy `projects_root` merged in, backward-compatible)
+- [x] `project-resolver.ts` with exact → ci-exact → prefix → substring → absolute matching
+- [x] Ambiguous matches return candidate list; earlier roots win on duplicates
+- [x] `default_project` dropped (user explicitly rejected; `@Name` shortcut + fuzzy match replace it)
 
 ## Week 2 (if needed, trigger-based)
 
