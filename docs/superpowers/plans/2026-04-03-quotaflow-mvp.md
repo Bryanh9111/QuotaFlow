@@ -2195,9 +2195,9 @@ main();
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/Users/zion/.quotaflow/logs/daemon-stdout.log</string>
+  <string><quotaflow-data-dir>/logs/daemon-stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/zion/.quotaflow/logs/daemon-stderr.log</string>
+  <string><quotaflow-data-dir>/logs/daemon-stderr.log</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>

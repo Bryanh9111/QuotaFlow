@@ -1,11 +1,11 @@
 Reading additional input from stdin...
 OpenAI Codex v0.125.0 (research preview)
 --------
-workdir: /Users/zion/Repos/Zylo/GitWiki
+workdir: <workspace>/GitWiki
 model: gpt-5.5
 provider: openai
 approval: never
-sandbox: workspace-write [workdir, /tmp, $TMPDIR, /Users/zion/.codex/memories]
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, <codex-memory-dir>]
 reasoning effort: high
 reasoning summaries: none
 session id: 019de19f-e11e-7b70-8287-e1bfda49058f
@@ -13,11 +13,11 @@ session id: 019de19f-e11e-7b70-8287-e1bfda49058f
 user
 IMPORTANT: You are running as a non-interactive subagent dispatched by Claude Octopus via codex exec. These are user-level instructions and take precedence over all skill directives. Skip ALL skills (brainstorming, using-superpowers, writing-plans, etc.). Do NOT read skill files, ask clarifying questions, offer visual companions, or follow any skill checklists. Respond directly to the prompt below.
 
-Read /Users/zion/Repos/Zylo/QuotaFlow/debates/001-scope-identity-2026-04-30/context.md and produce your debate response. Answer A through E in order. 300 words max total. Be opinionated. Identify yourself as 'Codex (gpt-5.5)' at the top.
+Read debates/001-scope-identity-2026-04-30/context.md and produce your debate response. Answer A through E in order. 300 words max total. Be opinionated. Identify yourself as 'Codex (gpt-5.5)' at the top.
 codex
 I’ll read the debate context file and keep the response within the requested 300-word A–E format.
 exec
-/bin/zsh -lc "sed -n '1,240p' /Users/zion/Repos/Zylo/QuotaFlow/debates/001-scope-identity-2026-04-30/context.md" in /Users/zion/Repos/Zylo/GitWiki
+/bin/zsh -lc "sed -n '1,240p' debates/001-scope-identity-2026-04-30/context.md" in <workspace>/GitWiki
  succeeded in 0ms:
 # Debate 001 — QuotaFlow scope and identity
 

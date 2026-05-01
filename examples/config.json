@@ -1,8 +1,8 @@
 {
   "projects_root": "",
   "projects_roots": [
-    "/Users/YOUR_USER/Repos/Workspace",
-    "/Users/YOUR_USER/Repos/Personal"
+    "$HOME/Repos/Workspace",
+    "$HOME/Repos/Personal"
   ],
   "inactivity_threshold_minutes": 15,
   "check_interval_minutes": 5,

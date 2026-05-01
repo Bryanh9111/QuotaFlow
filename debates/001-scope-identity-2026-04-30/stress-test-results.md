@@ -18,11 +18,11 @@ codex exec --full-auto "Create the file /tmp/qf-test-t1/hello.py containing exac
 ## T2 — claude -p with proper flags
 
 ```bash
-echo "Read git log of /Users/zion/Repos/Zylo/Compost (last 10 commits) and write a 5-line summary to /tmp/qf-test-t2-summary.txt. Do nothing else." \
+echo "Read git log of <workspace>/Compost (last 10 commits) and write a 5-line summary to /tmp/qf-test-t2-summary.txt. Do nothing else." \
   | claude -p \
       --dangerously-skip-permissions \
       --add-dir /tmp \
-      --add-dir /Users/zion/Repos/Zylo/Compost \
+      --add-dir <workspace>/Compost \
       --max-budget-usd 0.50
 ```
 
@@ -40,7 +40,7 @@ echo "Read git log of /Users/zion/Repos/Zylo/Compost (last 10 commits) and write
 | Headless one-shot dispatch | `-p` / `--print` | `exec` | ❌ already there |
 | Per-run cost ceiling | `--max-budget-usd <n>` | (config token budget) | ❌ already there |
 | Permission scoping | `--add-dir` + `--dangerously-skip-permissions` | `--full-auto` workspace-write | ❌ already there |
-| Model selection | `--model <name>` | `~/.codex/config.toml` | ❌ already there |
+| Model selection | `--model <name>` | `<codex-config-dir>/config.toml` | ❌ already there |
 | Effort tier | `--effort low\|medium\|high\|xhigh\|max` | `model_reasoning_effort` | ❌ already there |
 | Output format | `--output-format json\|stream-json` | (text default) | ❌ already there |
 | MCP injection | `--mcp-config` | (built-in) | ❌ already there |

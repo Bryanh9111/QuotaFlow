@@ -27,7 +27,7 @@ Each task specifies:
 
 ### T2 — Generate one-line summary of recent commits
 
-- project: `/Users/zion/Repos/Zylo/Compost`
+- project: `<workspace>/Compost`
 - agent: claude
 - actions_allowed: read-only git log; write summary to `/tmp/qf-test-t2-summary.txt`
 - artifact: 5-line summary of last 10 commits
@@ -36,7 +36,7 @@ Each task specifies:
 
 ### T3 — Check .gitignore patterns across Zylo repos
 
-- project: scan `/Users/zion/Repos/Zylo/{Engram,Compost,QuotaFlow}/.gitignore`
+- project: scan `<workspace>/{Engram,Compost,QuotaFlow}/.gitignore`
 - agent: codex
 - actions_allowed: read-only
 - artifact: `/tmp/qf-test-t3-report.md` listing patterns shared and unique per repo
@@ -45,7 +45,7 @@ Each task specifies:
 
 ### T4 — Run a fixed grep across a repo, write count report
 
-- project: `/Users/zion/Repos/Zylo/Engram`
+- project: `<workspace>/Engram`
 - agent: claude
 - actions_allowed: read-only ripgrep
 - artifact: `/tmp/qf-test-t4-counts.txt` with count of `def ` per file in src/

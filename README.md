@@ -1,5 +1,7 @@
 # QuotaFlow
 
+> **Status (2026-05-01)**: paused pending build trigger. The 4-way `octo:debate` (Codex / Gemini / Sonnet / Opus, 4/4 consensus) plus an empirical stress-test concluded that `claude -p` (`--max-budget-usd`, `--dangerously-skip-permissions`, `--add-dir`, `--effort`, `--output-format json`, `--mcp-config`, `--json-schema`) and `codex exec --full-auto` already ship every v0.1 primitive QuotaFlow was meant to add. The genuine remaining gap (persistent SQLite queue, sequential dispatch, global-quota gate, cross-project status board, push notification) reduces to a ~200 LoC single-file `~/bin/qf` wrapper, not a daemon project. Build trigger: 3 missing-feature pain incidents in 2 weeks of real work. See `debates/001-scope-identity-2026-04-30/synthesis.md` and `stress-test-results.md`. Pinned Engram decision id `0f74f15de8f3` (supersedes `89973613abd2`).
+
 > A local daemon that runs Claude Code tasks during your idle time, using quota you'd otherwise waste. Zero extra cost, safe git isolation, dual-layer quota awareness.
 
 **Problem it solves:** Claude Max subscribers waste 30-50% of their 5-hour token window while sleeping or away. QuotaFlow uses that idle quota to run real development tasks (code review, refactors, engineering plans) in the background, committing results to feature branches for review when you return.
@@ -68,8 +70,8 @@ Only two fields need attention in `~/.quotaflow/config.json`:
 ```json
 {
   "projects_roots": [
-    "/Users/YOUR_USER/Repos/Workspace",
-    "/Users/YOUR_USER/Repos/Personal"
+    "$HOME/Repos/Workspace",
+    "$HOME/Repos/Personal"
   ],
   "telegram_bot_token": "123456:ABCDEF...",
   "telegram_chat_id": "1234567890"
@@ -197,8 +199,8 @@ Full `~/.quotaflow/config.json` schema:
 {
   "projects_root": "",
   "projects_roots": [
-    "/Users/YOUR_USER/Repos/Workspace",
-    "/Users/YOUR_USER/Repos/Personal"
+    "$HOME/Repos/Workspace",
+    "$HOME/Repos/Personal"
   ],
   "inactivity_threshold_minutes": 15,
   "check_interval_minutes": 5,
